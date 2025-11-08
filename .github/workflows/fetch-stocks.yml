@@ -39,7 +39,7 @@ jobs:
 
       - name: Run stock history script
         run: |
-          python "stock_history.py"
+          python "_stock_history.py"
 
       - name: Commit & push if changed
         run: |
