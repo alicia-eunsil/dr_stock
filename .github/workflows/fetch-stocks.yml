@@ -2,7 +2,7 @@ name: Fetch daily stock closes
 
 on:
   schedule:
-    - cron: "0 23 * * *"  # 매일 08:00 KST (UTC+9)
+    - cron: "0 9 * * *"  # 매일 18:00 KST (UTC+9)
   workflow_dispatch:       # 필요 시 수동 실행도 가능
 
 permissions:
