@@ -113,7 +113,7 @@ if st.session_state.data_loaded:
     st.header("📊 종목별 최신 지표 데이터")
     
     # 엑셀 파일 찾기
-    excel_files = list(Path('.').glob('*stock_value.xlsx'))
+    excel_files = list(Path('.').glob('_stock_value.xlsx'))
     
     if excel_files:
         excel_file = excel_files[0]
@@ -251,7 +251,7 @@ if st.session_state.data_loaded:
         except Exception as e:
             st.error(f"❌ 데이터 로딩 오류: {str(e)}")
     else:
-        st.warning("⚠️ *stock_value.xlsx 파일을 찾을 수 없습니다.")
+        st.warning("⚠️ _stock_value.xlsx 파일을 찾을 수 없습니다.")
 
 else:
     # 초기 화면 - 데이터 갱신 전
