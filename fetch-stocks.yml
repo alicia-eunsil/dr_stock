@@ -1,0 +1,55 @@
+name: Fetch daily stock closes
+
+on:
+  schedule:
+    - cron: "0 23 * * *"  # 매일 08:00 KST (UTC+9)
+  workflow_dispatch:       # 필요 시 수동 실행도 가능
+
+permissions:
+  contents: write  # 결과 파일 커밋·푸시를 위해 필요
+
+jobs:
+  run-fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests openpyxl; fi
+
+      - name: Create secrets.json from GitHub Secrets
+        run: |
+          cat > secrets.json << 'EOF'
+          {
+            "api_key":    "${{ secrets.API_KEY }}",
+            "api_secret": "${{ secrets.API_SECRET }}",
+            "domain":     "${{ secrets.DOMAIN }}"
+          }
+          EOF
+
+      - name: Run stock history script
+        run: |
+          python "stock_history.py"
+
+      - name: Commit & push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # 변경사항이 있을 때만 커밋
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "Auto-update stock values: $(date -u +'%Y-%m-%d %H:%M:%S') UTC"
+            git push
+          else
+            echo "No changes to commit."
+          fi
