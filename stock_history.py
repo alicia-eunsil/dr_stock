@@ -107,7 +107,7 @@ def fetch_stock_daily_history(access_token, domain, symbol, start_date, end_date
         print(f"❌ 데이터 조회 중 에러: {str(e)}")
         return None
 
-def load_stock_list(filename="stock_value.xlsx"):
+def load_stock_list(filename="_stock_value.xlsx"):
     """Excel 파일에서 종목 목록을 읽어옵니다."""
     try:
         wb = openpyxl.load_workbook(filename)
@@ -135,7 +135,7 @@ def load_stock_list(filename="stock_value.xlsx"):
         print(f"\n❌ Excel 파일 읽기 실패: {str(e)}")
         return None
 
-def save_history_to_excel(data_list, filename="stock_value.xlsx"):
+def save_history_to_excel(data_list, filename="_stock_value.xlsx"):
     """
     각 종목의 일별 OHLC 데이터를 시가/고가/저가/종가/거래량 탭으로 나누어 저장합니다.
     각 탭의 행=종목, 열=일자 매트릭스 형식으로 저장됩니다.
@@ -317,7 +317,7 @@ def main():
         return
     
     access_token = token_data['access_token']
-    filename = "stock_value.xlsx"
+    filename = "_stock_value.xlsx"
     # 종가/거래량 탭에서 최신 날짜 확인
     latest_close = get_latest_date_from_sheet(filename, "종가")
     latest_amount = get_latest_date_from_sheet(filename, "거래량")
