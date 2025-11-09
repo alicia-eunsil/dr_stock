@@ -291,4 +291,4 @@ else:
     st.info("👈 왼쪽 사이드바에서 '데이터 갱신 시작' 버튼을 클릭하여 데이터를 먼저 로드하세요.")
 
 st.markdown("---")
-st.caption("📂 파일: _stock_value.xlsx")
+st.caption("Created by alicia")
