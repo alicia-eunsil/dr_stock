@@ -1,3 +1,5 @@
+'''화면을 구성하는 소스. 사이드바에 데이터갱신을 할수 있는 버튼을 생성했고, 메인에는 최신 데이터를 종목별로 가져옴'''
+
 import streamlit as st
 import subprocess
 import sys
@@ -224,26 +226,57 @@ if st.session_state.data_loaded:
                 if latest_date:
                     st.info(f"📅 데이터 기준일: **{latest_date}**")
                 
-                # 스타일링된 데이터프레임 표시
+                # Z/S 컬럼 이모지 표시용 포맷팅 (표시 전용 복사본 생성)
+                display_df = df_filtered.copy()
+
+                def _format_z_cell(v):
+                    val = pd.to_numeric(v, errors='coerce')
+                    if pd.isna(val):
+                        return '-' if v in (None, '') else str(v)
+                    out = f"{val:.2f}"
+                    if val > 100:
+                        out += " 🔵"
+                    elif val < -100:
+                        out += " 🔴"
+                    return out
+
+                def _format_s_cell(v):
+                    val = pd.to_numeric(v, errors='coerce')
+                    if pd.isna(val):
+                        return '-' if v in (None, '') else str(v)
+                    out = f"{val:.2f}"
+                    # 허용 오차 0.1 이내면 같다로 간주
+                    if abs(val - 100) < 0.1:
+                        out += " 🔴"
+                    elif abs(val - 0) < 0.1:
+                        out += " 🔵"
+                    return out
+
+                for c in ['Z20', 'Z60', 'Z120']:
+                    if c in display_df.columns:
+                        display_df[c] = display_df[c].apply(_format_z_cell)
+                for c in ['S20', 'S60', 'S120']:
+                    if c in display_df.columns:
+                        display_df[c] = display_df[c].apply(_format_s_cell)
+                
+                # 스타일링된 데이터프레임 표시 (Z/S는 텍스트 컬럼로 표시)
                 st.dataframe(
-                    df_filtered,
+                    display_df,
                     use_container_width=True,
                     height=600,
                     hide_index=True,
                     column_config={
                         "종목코드": st.column_config.TextColumn("종목코드", width="small"),
                         "종목명": st.column_config.TextColumn("종목명", width="small"),
-                        "Z20": st.column_config.NumberColumn("Z20", format="%.2f", width="small"),
-                        "Z60": st.column_config.NumberColumn("Z60", format="%.2f", width="small"),
-                        "Z120": st.column_config.NumberColumn("Z120", format="%.2f", width="small"),
-                        "S20": st.column_config.NumberColumn("S20", format="%.2f", width="small"),
-                        "S60": st.column_config.NumberColumn("S60", format="%.2f", width="small"),
-                        "S120": st.column_config.NumberColumn("S120", format="%.2f", width="small"),
+                        "Z20": st.column_config.TextColumn("Z20", width="small"),
+                        "Z60": st.column_config.TextColumn("Z60", width="small"),
+                        "Z120": st.column_config.TextColumn("Z120", width="small"),
+                        "S20": st.column_config.TextColumn("S20", width="small"),
+                        "S60": st.column_config.TextColumn("S60", width="small"),
+                        "S120": st.column_config.TextColumn("S120", width="small"),
                         "GAP": st.column_config.NumberColumn("GAP", format="%.2f", width="small"),
                     }
                 )
-                
-                # ...existing code...
                 
             else:
                 st.warning("⚠️ 데이터를 찾을 수 없습니다. 먼저 데이터를 갱신해 주세요.")
