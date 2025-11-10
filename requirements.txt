@@ -2,4 +2,6 @@ streamlit
 pandas
 pillow
 openpyxl
+bcrypt
 requests
+
