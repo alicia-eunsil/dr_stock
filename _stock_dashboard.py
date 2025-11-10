@@ -8,7 +8,34 @@ import pandas as pd
 import openpyxl
 from pathlib import Path
 import os
+import bcrypt
 
+# 생성한 해시를 여기에 붙여넣기!
+ACCESS_CODE_HASH = b"$2b$12$gDBpQYK.g938H.8cNwLeUu/VRidCP1GxqusJiEQzVnvaSrG4CBE6K"
+
+# 접근코드
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    st.title("🔒 Access Required")
+    st.write("Please enter the access code to open the dashboard.")
+
+    with st.form("auth_form", clear_on_submit=False):
+        code = st.text_input("Enter access code", type="password", autocomplete="off")
+        submitted = st.form_submit_button("Submit")
+
+    if submitted:
+        if code and bcrypt.checkpw(code.encode(), ACCESS_CODE_HASH):
+            st.session_state["authenticated"] = True
+            st.success("Access granted ✅")
+            st.rerun()
+        else:
+            st.error("Invalid code ❌")
+
+    st.stop()
+    
+# ===== 인증 통과 후 실제 앱 내용 =====
 st.set_page_config(
     page_title="주식 데이터 대시보드",
     page_icon="📈",
