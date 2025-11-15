@@ -1,5 +1,3 @@
-'''화면을 구성하는 소스. 사이드바에 데이터갱신을 할수 있는 버튼을 생성했고, 메인에는 최신 데이터를 종목별로 가져옴'''
-
 import streamlit as st
 import subprocess
 import sys
@@ -9,11 +7,13 @@ import openpyxl
 from pathlib import Path
 import os
 import bcrypt
+from datetime import datetime, date, timedelta
 
-# 생성한 해시를 여기에 붙여넣기!
+# ======================================
+# 0. 인증
+# ======================================
 ACCESS_CODE_HASH = b"$2b$12$gDBpQYK.g938H.8cNwLeUu/VRidCP1GxqusJiEQzVnvaSrG4CBE6K"
 
-# 접근코드
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
@@ -21,301 +21,461 @@ if not st.session_state["authenticated"]:
     st.title("🔒 Access Required")
     st.write("Please enter the access code to open the dashboard.")
 
-    with st.form("auth_form", clear_on_submit=False):
-        code = st.text_input("Enter access code", type="password", autocomplete="off")
+    with st.form("auth_form"):
+        code = st.text_input("Enter access code", type="password")
         submitted = st.form_submit_button("Submit")
 
     if submitted:
-        if code and bcrypt.checkpw(code.encode(), ACCESS_CODE_HASH):
+        if bcrypt.checkpw(code.encode(), ACCESS_CODE_HASH):
             st.session_state["authenticated"] = True
-            st.success("Access granted ✅")
+            st.success("Access granted")
             st.rerun()
         else:
-            st.error("Invalid code ❌")
+            st.error("Invalid code")
 
     st.stop()
-    
-# ===== 인증 통과 후 실제 앱 내용 =====
-st.set_page_config(
-    page_title="주식 데이터 대시보드",
-    page_icon="📈",
-    layout="wide"
-)
 
+# ======================================
+# 페이지 설정
+# ======================================
+st.set_page_config(page_title="주식 데이터 대시보드", page_icon="📈", layout="wide")
 st.title("📈 주식 데이터 대시보드")
 st.markdown("---")
 
-# 사이드바에 실행 버튼
-with st.sidebar:
-    st.header("데이터 업데이트")
-    if st.button("🔄 데이터 갱신 시작", type="primary", use_container_width=True):
-        st.session_state.run_update = True
-
-# 메인 영역
-if 'run_update' not in st.session_state:
+# ======================================
+# 상태 변수
+# ======================================
+if "run_update" not in st.session_state:
     st.session_state.run_update = False
-    
-if 'data_loaded' not in st.session_state:
+if "data_loaded" not in st.session_state:
     st.session_state.data_loaded = False
 
+# 🔥 총합 탭 날짜 확장용 (최근 10일 고정에서, 버튼 눌러서 +10일씩 늘려 보기)
+if "show_days" not in st.session_state:
+    st.session_state.show_days = 10  # 시작: 최근 10일
+
+# 🔥 원자료 탭 날짜 확장용
+if "show_days_raw" not in st.session_state:
+    st.session_state.show_days_raw = 10  # 시작: 최근 10일
+
+# ======================================
+# 날짜 처리 함수
+# ======================================
+def _to_datetime(v):
+    if isinstance(v, (datetime, date)):
+        return datetime(v.year, v.month, v.day)
+
+    if isinstance(v, (int, float)):
+        base = datetime(1899, 12, 30)
+        try:
+            return base + timedelta(days=int(v))
+        except:
+            return None
+
+    s = str(v).strip()
+    if not s:
+        return None
+
+    for fmt in ("%Y-%m-%d", "%Y.%m.%d.", "%Y.%m.%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except:
+            pass
+
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 8:
+        try:
+            return datetime.strptime(digits, "%Y%m%d")
+        except:
+            pass
+
+    return None
+
+
+def format_excel_date(v):
+    dt = _to_datetime(v)
+    if dt:
+        return dt.strftime("%Y.%m.%d.")
+    s = str(v)
+    s = s.replace("-", ".").replace("/", ".")
+    if not s.endswith("."):
+        s += "."
+    return s
+
+
+def _format_z_cell(v):
+    val = pd.to_numeric(v, errors="coerce")
+    if pd.isna(val):
+        return "-"
+    out = f"{val:.2f}"
+    if val > 100:
+        out += " 🔵"
+    elif val < -100:
+        out += " 🔴"
+    return out
+
+
+def _format_s_cell(v):
+    val = pd.to_numeric(v, errors="coerce")
+    if pd.isna(val):
+        return "-"
+    out = f"{val:.2f}"
+    if abs(val - 100) < 0.1:
+        out += " 🔴"
+    elif abs(val - 0) < 0.1:
+        out += " 🔵"
+    return out
+
+# ======================================
+# 사이드바: 데이터 갱신 버튼
+# ======================================
+with st.sidebar:
+    st.header("데이터 업데이트")
+    if st.button("🔄 데이터 갱신 시작"):
+        st.session_state.run_update = True
+
+# ======================================
+# 데이터 갱신 실행
+# ======================================
 if st.session_state.run_update:
     with st.sidebar:
         st.subheader("진행 상황")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-    
+        pb = st.progress(0)
+        msg = st.empty()
+
     scripts = [
         ("_totalS.py", "S20/S60/S120 계산"),
         ("_totalZ.py", "Z20/Z60/Z120 계산"),
-        ("_gap.py", "GAP 계산")
+        ("_gap.py", "GAP 계산"),
     ]
-    results = []
-    for idx, (script, description) in enumerate(scripts):
-        with st.sidebar:
-            status_text.text(f"⏳ {description} 중... ({idx+1}/{len(scripts)})")
+
+    for idx, (sc, desc) in enumerate(scripts):
+        msg.write(f"{desc} 실행 중...")
         try:
             result = subprocess.run(
-                [sys.executable, script],
-                capture_output=True,
-                text=True,
-                timeout=300
+                [sys.executable, sc], capture_output=True, text=True, timeout=300
             )
             if result.returncode == 0:
-                results.append({
-                    'script': script,
-                    'description': description,
-                    'status': '✅ 성공',
-                    'output': result.stdout
-                })
-                with st.sidebar:
-                    st.success(f"✅ {description} 완료!")
+                st.sidebar.success(f"{desc} 완료")
             else:
-                results.append({
-                    'script': script,
-                    'description': description,
-                    'status': '❌ 실패',
-                    'output': result.stderr
-                })
-                with st.sidebar:
-                    st.error(f"❌ {description} 실패!")
-        except subprocess.TimeoutExpired:
-            results.append({
-                'script': script,
-                'description': description,
-                'status': '⏱️ 타임아웃',
-                'output': '스크립트 실행 시간 초과 (5분)'
-            })
-            with st.sidebar:
-                st.error(f"⏱️ {description} 타임아웃!")
-        except Exception as e:
-            results.append({
-                'script': script,
-                'description': description,
-                'status': '❌ 오류',
-                'output': str(e)
-            })
-            with st.sidebar:
-                st.error(f"❌ {description} 오류: {str(e)}")
-        with st.sidebar:
-            progress_bar.progress((idx + 1) / len(scripts))
-        time.sleep(0.5)
-    with st.sidebar:
-        status_text.text("✅ 모든 데이터 갱신 완료!")
-        st.balloons()
-        st.markdown("---")
-        st.subheader("📊 실행 결과 요약")
-        for result in results:
-            with st.expander(f"{result['status']} {result['description']}", expanded=False):
-                st.code(result['output'], language='text')
-        if st.button("🔄 다시 실행"):
-            st.session_state.run_update = True
-            st.rerun()
-    
-    # 데이터 갱신 완료 후 메인 화면 표시 플래그 설정
+                st.sidebar.error(f"{desc} 실패")
+        except:
+            st.sidebar.error(f"{desc} 오류 발생")
+
+        pb.progress((idx + 1) / len(scripts))
+
     st.session_state.data_loaded = True
     st.session_state.run_update = False
-    st.rerun()  # 메인 화면 표시를 위해 재실행
+    st.rerun()
 
-# 메인 화면 - 데이터 갱신 완료 후에만 표시
-if st.session_state.data_loaded:
-    # 메인 화면 - 최신 데이터 표시
-    st.header("📊 종목별 최신 지표 데이터")
-    
-    # 엑셀 파일 찾기
-    excel_files = list(Path('.').glob('_stock_value.xlsx'))
-    
-    if excel_files:
-        excel_file = excel_files[0]
-        
-        try:
-            # 엑셀 파일에서 데이터 읽기
-            wb = openpyxl.load_workbook(excel_file, data_only=True)
-            
-            # '종목' 시트에서 종목코드와 종목명 매핑 가져오기
-            stock_info = {}  # {종목코드: 종목명}
-            if '종목' in wb.sheetnames:
-                ws_stock = wb['종목']
-                for row in ws_stock.iter_rows(min_row=2, max_col=2):  # 2행부터 2개 컬럼
-                    stock_name = row[0].value  # A열: 종목명
-                    stock_code = row[1].value  # B열: 종목코드
-                    if stock_code and stock_name:
-                        stock_info[stock_code] = stock_name
-            
-            # 각 시트별 최신 데이터 수집
-            sheet_names = ['z20', 'z60', 'z120', 's20', 's60', 's120', 'gap']
-            data_dict = {}
-            latest_date = None  # 최신 날짜 저장
-            
-            # 종목코드로 데이터 딕셔너리 초기화
-            for stock_code, stock_name in stock_info.items():
-                data_dict[stock_code] = {
-                    '종목코드': stock_code,
-                    '종목명': stock_name
-                }
-            
-            for sheet_name in sheet_names:
-                if sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    
-                    max_row = ws.max_row
-                    max_col = ws.max_column
-                    
-                    # 최신 날짜 가져오기 (첫 번째 시트에서만, 헤더 행의 마지막 값이 있는 컬럼)
-                    if latest_date is None and max_col > 2:
-                        for col_idx in range(max_col, 2, -1):
-                            date_value = ws.cell(row=1, column=col_idx).value
-                            if date_value is not None and date_value != '':
-                                latest_date = date_value
-                                break
-                    
-                    # 각 행(종목)을 순회하며 최신 값 가져오기
-                    for row_idx in range(2, max_row + 1):  # 2행부터 (1행은 헤더)
-                        stock_code = ws.cell(row=row_idx, column=2).value  # 두 번째 컬럼이 종목코드
-                        
-                        if stock_code and stock_code in data_dict:
-                            # 뒤에서부터 값이 있는 컬럼 찾기 (3번째 컬럼부터 시작, 1열=종목명, 2열=종목코드)
-                            value = None
-                            for col_idx in range(max_col, 2, -1):  # 마지막 컬럼부터 3번째 컬럼까지
-                                cell_value = ws.cell(row=row_idx, column=col_idx).value
-                                if cell_value is not None and cell_value != '':
-                                    value = cell_value
-                                    break
-                            
-                            data_dict[stock_code][sheet_name.upper()] = value if value is not None else '-'
-            
-            wb.close()
-            
-            if data_dict:
-                # DataFrame 생성
-                df = pd.DataFrame.from_dict(data_dict, orient='index')
-                df = df.reset_index(drop=True)
-                
-                # 컬럼 순서 정리 (종목코드, 종목명, 나머지 지표)
-                column_order = ['종목코드', '종목명', 'Z20', 'Z60', 'Z120', 'S20', 'S60', 'S120', 'GAP']
-                existing_columns = [col for col in column_order if col in df.columns]
-                df = df[existing_columns]
-                
-                # 필터링 옵션
-                st.markdown("### 🔍 필터 옵션")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    search_stock = st.text_input("🔎 종목명/종목코드 검색", placeholder="종목명 또는 종목코드를 입력하세요")
-                
-                with col2:
-                    sort_by = st.selectbox(
-                        "정렬 기준",
-                        options=['종목코드', '종목명'] + [col for col in df.columns if col not in ['종목코드', '종목명']],
-                        index=0
-                    )
-                
-                # 검색 필터 적용 (종목명 또는 종목코드로 검색)
-                if search_stock:
-                    df_filtered = df[
-                        df['종목명'].str.contains(search_stock, case=False, na=False) |
-                        df['종목코드'].astype(str).str.contains(search_stock, case=False, na=False)
-                    ]
+# ======================================
+# 데이터 로드
+# ======================================
+if not st.session_state.data_loaded:
+    st.info("👈 왼쪽에서 '데이터 갱신 시작'을 먼저 실행하세요.")
+    st.stop()
+
+excel_files = list(Path(".").glob("_stock_value.xlsx"))
+if not excel_files:
+    st.error("_stock_value.xlsx 파일을 찾지 못했습니다.")
+    st.stop()
+
+excel_file = excel_files[0]
+wb = openpyxl.load_workbook(excel_file, data_only=True)
+
+# ======================================
+# 종목 정보 읽기
+# ======================================
+stock_info = {}
+if "종목" in wb.sheetnames:
+    ws = wb["종목"]
+    for r in ws.iter_rows(min_row=2, max_col=2):
+        name = r[0].value
+        code = r[1].value
+        if code and name:
+            stock_info[code] = name
+
+# ======================================
+# 1. 총합(Z20/Z60/.../GAP) 데이터 로딩
+# ======================================
+sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap"]
+
+# 기준 시트 하나 선택 (z20이 됨)
+base_ws = None
+for s in sheet_names:
+    if s in wb.sheetnames:
+        base_ws = wb[s]
+        break
+
+indicator_df = None
+indicator_date_infos = []
+total_days = 0
+
+if base_ws:
+    max_col = base_ws.max_column
+
+    # 날짜 헤더 수집 (기준: z20 시트 1행, 3열~)
+    for col in range(3, max_col + 1):
+        raw = base_ws.cell(row=1, column=col).value
+        if raw is None:
+            continue
+        dt = _to_datetime(raw)
+        label = format_excel_date(raw)
+        indicator_date_infos.append((col, raw, dt, label))
+
+    # 날짜 정렬 (과거 → 최신)
+    indicator_date_infos = sorted(
+        indicator_date_infos,
+        key=lambda x: (x[2] is None, x[2] or datetime.min)
+    )
+
+    total_days = len(indicator_date_infos)
+
+    # ➜ 현재 표시할 일수 (최근 N일)
+    show_days = min(st.session_state.show_days, total_days)
+
+    # ➜ 가장 최근 show_days개 선택
+    start_idx = total_days - show_days
+    selected_infos = indicator_date_infos[start_idx:]  # 과거 → 최신
+    selected_labels = [lbl for _, _, _, lbl in selected_infos]
+
+    # 날짜 범위 표시용
+    oldest_label = selected_infos[0][3]
+    latest_label = selected_infos[-1][3]
+    indicator_range_msg = (
+        f"📅 표시 범위: **{oldest_label} ~ {latest_label}** "
+        f"(최근 {show_days}일 / 전체 {total_days}일)"
+    )
+
+    # 종목별 데이터 딕셔너리
+    data_dict = {code: {"종목코드": code, "종목명": name} for code, name in stock_info.items()}
+
+    # 🔧 시트별로 데이터 가져오기 (열 번호가 아니라 '날짜 문자열'로 매칭!)
+    for s in sheet_names:
+        if s not in wb.sheetnames:
+            continue
+
+        ws = wb[s]
+        max_row_s = ws.max_row
+        max_col_s = ws.max_column
+
+        # 이 시트의 날짜 → 열번호 매핑 만들기
+        label_to_col = {}
+        for col in range(3, max_col_s + 1):
+            raw = ws.cell(row=1, column=col).value
+            if raw is None:
+                continue
+            lbl = format_excel_date(raw)
+            label_to_col[lbl] = col
+
+        # 각 종목별로, 선택된 날짜들에 대해 값 채우기
+        for r in range(2, max_row_s + 1):
+            code = ws.cell(row=r, column=2).value
+            if code not in data_dict:
+                continue
+
+            for lbl in selected_labels:
+                col_idx = label_to_col.get(lbl)
+                if col_idx is None:
+                    val = None
                 else:
-                    df_filtered = df.copy()
-                
-                # 정렬
-                if sort_by not in ['종목코드', '종목명']:
-                    # 숫자형으로 변환 후 정렬
-                    df_filtered[sort_by] = pd.to_numeric(df_filtered[sort_by], errors='coerce')
-                    df_filtered = df_filtered.sort_values(by=sort_by, ascending=False)
-                else:
-                    df_filtered = df_filtered.sort_values(by=sort_by)
-                
-                # 데이터 표시
-                st.markdown(f"### 📈 최신 데이터 ({len(df_filtered)}개 종목)")
-                
-                # 최신 날짜 표시
-                if latest_date:
-                    st.info(f"📅 데이터 기준일: **{latest_date}**")
-                
-                # Z/S 컬럼 이모지 표시용 포맷팅 (표시 전용 복사본 생성)
-                display_df = df_filtered.copy()
+                    val = ws.cell(row=r, column=col_idx).value
 
-                def _format_z_cell(v):
-                    val = pd.to_numeric(v, errors='coerce')
-                    if pd.isna(val):
-                        return '-' if v in (None, '') else str(v)
-                    out = f"{val:.2f}"
-                    if val > 100:
-                        out += " 🔵"
-                    elif val < -100:
-                        out += " 🔴"
-                    return out
+                data_dict[code][(lbl, s.upper())] = val
 
-                def _format_s_cell(v):
-                    val = pd.to_numeric(v, errors='coerce')
-                    if pd.isna(val):
-                        return '-' if v in (None, '') else str(v)
-                    out = f"{val:.2f}"
-                    # 허용 오차 0.1 이내면 같다로 간주
-                    if abs(val - 100) < 0.1:
-                        out += " 🔴"
-                    elif abs(val - 0) < 0.1:
-                        out += " 🔵"
-                    return out
+    indicator_df = pd.DataFrame.from_dict(data_dict, orient="index").reset_index(drop=True)
 
-                for c in ['Z20', 'Z60', 'Z120']:
-                    if c in display_df.columns:
-                        display_df[c] = display_df[c].apply(_format_z_cell)
-                for c in ['S20', 'S60', 'S120']:
-                    if c in display_df.columns:
-                        display_df[c] = display_df[c].apply(_format_s_cell)
-                
-                # 스타일링된 데이터프레임 표시 (Z/S는 텍스트 컬럼로 표시)
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    height=600,
-                    hide_index=True,
-                    column_config={
-                        "종목코드": st.column_config.TextColumn("종목코드", width="small"),
-                        "종목명": st.column_config.TextColumn("종목명", width="small"),
-                        "Z20": st.column_config.TextColumn("Z20", width="small"),
-                        "Z60": st.column_config.TextColumn("Z60", width="small"),
-                        "Z120": st.column_config.TextColumn("Z120", width="small"),
-                        "S20": st.column_config.TextColumn("S20", width="small"),
-                        "S60": st.column_config.TextColumn("S60", width="small"),
-                        "S120": st.column_config.TextColumn("S120", width="small"),
-                        "GAP": st.column_config.NumberColumn("GAP", format="%.2f", width="small"),
-                    }
-                )
-                
-            else:
-                st.warning("⚠️ 데이터를 찾을 수 없습니다. 먼저 데이터를 갱신해 주세요.")
-                
-        except Exception as e:
-            st.error(f"❌ 데이터 로딩 오류: {str(e)}")
+# ======================================
+# 2. 원자료(종가) 데이터 로딩 + 확장 기능
+# ======================================
+close_df = None
+close_date_infos = []
+total_close_days = 0
+
+if "종가" in wb.sheetnames:
+    ws = wb["종가"]
+    max_col_c = ws.max_column
+
+    # 날짜 헤더
+    for col in range(3, max_col_c + 1):
+        raw = ws.cell(row=1, column=col).value
+        if raw is None:
+            continue
+        dt = _to_datetime(raw)
+        label = format_excel_date(raw)
+        close_date_infos.append((col, raw, dt, label))
+
+    # 정렬 (과거 → 최신)
+    close_date_infos = sorted(
+        close_date_infos,
+        key=lambda x: (x[2] is None, x[2] or datetime.min)
+    )
+
+    total_close_days = len(close_date_infos)
+
+    # 현재 표시할 일수
+    show_raw = min(st.session_state.show_days_raw, total_close_days)
+
+    start_idx = total_close_days - show_raw
+    selected_close_infos = close_date_infos[start_idx:]  # 과거 → 최신
+
+    oldest_label = selected_close_infos[0][3]
+    latest_label = selected_close_infos[-1][3]
+
+    close_range_msg = (
+        f"📅 종가 표시 범위: **{oldest_label} ~ {latest_label}** "
+        f"(최근 {show_raw}일 / 전체 {total_close_days}일)"
+    )
+
+    # 종목별 딕셔너리
+    close_dict = {code: {"종목명": name, "종목코드": code} for code, name in stock_info.items()}
+
+    max_row_c = ws.max_row
+
+    for r in range(2, max_row_c + 1):
+        code = ws.cell(row=r, column=2).value
+        if code not in close_dict:
+            continue
+
+        for col_idx, raw, dt, label in selected_close_infos:
+            val = ws.cell(row=r, column=col_idx).value
+            close_dict[code][label] = val
+
+    close_df = pd.DataFrame.from_dict(close_dict, orient="index").reset_index(drop=True)
+
+wb.close()
+
+# ======================================
+# 탭 구성
+# ======================================
+tab_total, tab_raw = st.tabs(["1️⃣ 총합", "2️⃣ 원자료"])
+
+# --------------------------------------
+# 총합 탭
+# --------------------------------------
+with tab_total:
+    if indicator_df is None:
+        st.warning("⚠️ 총합 데이터를 불러올 수 없습니다.")
     else:
-        st.warning("⚠️ _stock_value.xlsx 파일을 찾을 수 없습니다.")
+        st.markdown("### 🔍 필터 옵션 (총합)")
+        c1, c2 = st.columns(2)
+        with c1:
+            search = st.text_input("🔎 종목명/종목코드 검색", key="search_total")
+        with c2:
+            sort_by = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_total")
 
-else:
-    # 초기 화면 - 데이터 갱신 전
-    st.info("👈 왼쪽 사이드바에서 '데이터 갱신 시작' 버튼을 클릭하여 데이터를 먼저 로드하세요.")
+        # 검색 적용
+        df_f = indicator_df.copy()
+        if search:
+            df_f = df_f[
+                df_f["종목명"].astype(str).str.contains(search, case=False) |
+                df_f["종목코드"].astype(str).str.contains(search, case=False)
+            ]
+
+        df_f = df_f.sort_values(by=sort_by)
+
+        st.info(indicator_range_msg)
+
+        # --------------------------------------
+        # 🔥 멀티헤더 생성 (1행: 날짜, 2행: 지표명)
+        # --------------------------------------
+        metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP"]
+        base_cols = ["종목코드", "종목명"]
+        df_show = df_f[base_cols].copy()
+
+        col_tuples = [("", "종목코드"), ("", "종목명")]
+
+        # 날짜 × 지표 조합을 모두 생성 (값 없으면 '-'로)
+        for lbl in selected_labels:
+            for m in metrics:
+                key = (lbl, m)
+                if key in df_f.columns:
+                    df_show[(lbl, m)] = df_f[key]
+                else:
+                    df_show[(lbl, m)] = "-"
+                col_tuples.append((lbl, m))
+
+        df_show.columns = pd.MultiIndex.from_tuples(col_tuples)
+
+        # Z/S 포맷 적용
+        for lbl in selected_labels:
+            for m in ["Z20", "Z60", "Z120"]:
+                col = (lbl, m)
+                if col in df_show.columns:
+                    df_show[col] = df_show[col].apply(_format_z_cell)
+
+            for m in ["S20", "S60", "S120"]:
+                col = (lbl, m)
+                if col in df_show.columns:
+                    df_show[col] = df_show[col].apply(_format_s_cell)
+
+            # GAP은 숫자 없으면 '-'로 통일
+            col = (lbl, "GAP")
+            if col in df_show.columns:
+                df_show[col] = df_show[col].apply(
+                    lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
+                )
+
+        st.dataframe(
+            df_show,
+            use_container_width=True,
+            height=600,
+        )
+
+        # 🔥 과거 확장 버튼
+        if st.button("⬅ 과거 10일 더보기(총합)", disabled=(total_days <= st.session_state.show_days)):
+            st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
+            st.rerun()
+
+# --------------------------------------
+# 원자료 탭
+# --------------------------------------
+with tab_raw:
+    if close_df is None:
+        st.warning("⚠️ 원자료(종가) 데이터를 불러올 수 없습니다.")
+    else:
+        st.markdown("### 🔍 필터 옵션 (원자료)")
+        r1, r2 = st.columns(2)
+        with r1:
+            search_raw = st.text_input("🔎 종목명/종목코드 검색", key="search_raw")
+        with r2:
+            sort_raw = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_raw")
+
+        df_raw = close_df.copy()
+
+        if search_raw:
+            df_raw = df_raw[
+                df_raw["종목명"].astype(str).str.contains(search_raw, case=False) |
+                df_raw["종목코드"].astype(str).str.contains(search_raw, case=False)
+            ]
+
+        df_raw = df_raw.sort_values(by=sort_raw)
+
+        st.info(close_range_msg)
+
+        # 표시 조건 설정
+        date_cols = [c for c in df_raw.columns if c not in ["종목명", "종목코드"]]
+
+        column_config = {
+            "종목코드": st.column_config.TextColumn("종목코드", width="small"),
+            "종목명": st.column_config.TextColumn("종목명", width="small"),
+        }
+
+        for c in date_cols:
+            column_config[c] = st.column_config.NumberColumn(c, format="%.0f")
+
+        st.dataframe(
+            df_raw,
+            use_container_width=True,
+            height=600,
+            hide_index=True,
+            column_config=column_config,
+        )
+
+        # 🔥 과거 확장 버튼
+        if st.button("⬅ 과거 10일 더보기(원자료)", disabled=(total_close_days <= st.session_state.show_days_raw)):
+            st.session_state.show_days_raw = min(st.session_state.show_days_raw + 10, total_close_days)
+            st.rerun()
 
 st.markdown("---")
 st.caption("Created by Alicia")
