@@ -345,6 +345,15 @@ if "종가" in wb.sheetnames:
 
     close_df = pd.DataFrame.from_dict(close_dict, orient="index").reset_index(drop=True)
 
+    # 🔧 컬럼 이름을 총합 탭과 동일하게 yyyy.mm.dd. 형식으로 통일
+    rename_map = {}
+    for col in close_df.columns:
+        if col in ["종목코드", "종목명"]:
+            continue
+        rename_map[col] = format_excel_date(col)
+
+    close_df = close_df.rename(columns=rename_map)
+
 wb.close()
 
 # ======================================
