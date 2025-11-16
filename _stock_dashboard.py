@@ -1,3 +1,5 @@
+# _stock_dashboard.py의 업그레이드 버전, 원자료 보기, 더보기 기능 추가
+
 import streamlit as st
 import subprocess
 import sys
@@ -416,6 +418,8 @@ with tab_total:
                     lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
                 )
 
+        df_show = df_show.set_index([("", "종목코드"), ("", "종목명")])
+
         st.dataframe(
             df_show,
             use_container_width=True,
@@ -445,8 +449,8 @@ with tab_raw:
 
         if search_raw:
             df_raw = df_raw[
-                df_raw["종목명"].astype(str).str.contains(search_raw, case=False) |
-                df_raw["종목코드"].astype(str).str.contains(search_raw, case=False)
+                df_raw["종목코드"].astype(str).str.contains(search_raw, case=False) |
+                df_raw["종목명"].astype(str).str.contains(search_raw, case=False)
             ]
 
         df_raw = df_raw.sort_values(by=sort_raw)
@@ -454,7 +458,10 @@ with tab_raw:
         st.info(close_range_msg)
 
         # 표시 조건 설정
-        date_cols = [c for c in df_raw.columns if c not in ["종목명", "종목코드"]]
+        date_cols = [c for c in df_raw.columns if c not in ["종목코드", "종목명"]]
+
+        # 🔒 컬럼 순서 고정: 종목코드 → 종목명 → 날짜들
+        df_raw = df_raw[["종목코드", "종목명"] + date_cols]
 
         column_config = {
             "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
@@ -473,7 +480,7 @@ with tab_raw:
         )
 
         # 🔥 과거 확장 버튼
-        if st.button("⬅ 과거 10일 더보기(원자료)", disabled=(total_close_days <= st.session_state.show_days_raw)):
+        if st.button("⬅ 과거 10일 더보기(종가)", disabled=(total_close_days <= st.session_state.show_days_raw)):
             st.session_state.show_days_raw = min(st.session_state.show_days_raw + 10, total_close_days)
             st.rerun()
 
