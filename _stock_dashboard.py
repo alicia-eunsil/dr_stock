@@ -457,8 +457,8 @@ with tab_raw:
         date_cols = [c for c in df_raw.columns if c not in ["종목명", "종목코드"]]
 
         column_config = {
-            "종목코드": st.column_config.TextColumn("종목코드", width="small"),
-            "종목명": st.column_config.TextColumn("종목명", width="small"),
+            "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
+            "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
         }
 
         for c in date_cols:
