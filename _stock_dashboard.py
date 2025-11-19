@@ -384,8 +384,19 @@ if "종가" in wb.sheetnames:
     for col in close_df.columns:
         if col in ["종목코드", "종목명"]:
             continue
-        rename_map[col] = format_excel_date(col)
-
+        
+        # ① 숫자 8자리만 추출 (예: 20251106)
+        digits = "".join(ch for ch in str(col) if ch.isdigit())
+        
+        # ② 날짜 형태면 format_excel_date로 처리
+        if len(digits) == 8:
+            # 정규 날짜 형식으로 만들어 전달
+            fixed = f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
+            rename_map[col] = format_excel_date(fixed)
+        else:
+            # 형식이 불확실하면 기존 함수만 적용
+            rename_map[col] = format_excel_date(col)
+    
     close_df = close_df.rename(columns=rename_map)
 
 wb.close()
