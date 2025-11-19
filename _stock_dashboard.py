@@ -158,10 +158,7 @@ def _format_price(x):
 # 사이드바: 데이터 갱신 버튼
 # ======================================
 with st.sidebar:
-    st.header("데이터 업데이트")
-    if st.button("🔄 데이터 갱신 시작"):
-        st.session_state.run_update = True
-
+    
     # ✅ _stock_value.xlsx 파일이 있으면 언제든 다운로드 버튼 표시
     excel_path = Path("_stock_value.xlsx")
     if excel_path.exists():
@@ -173,7 +170,10 @@ with st.sidebar:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="download_excel",
             )
-
+            
+    st.header("데이터 업데이트")
+    if st.button("🔄 데이터 갱신 시작"):
+        st.session_state.run_update = True
 # ======================================
 # 데이터 갱신 실행
 # ======================================
