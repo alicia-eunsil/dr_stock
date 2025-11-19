@@ -41,8 +41,8 @@ if not st.session_state["authenticated"]:
 # 페이지 설정
 # ======================================
 st.set_page_config(page_title="주식 데이터 대시보드", page_icon="📈", layout="wide")
-# st.title("📈 주식 데이터 대시보드")
-# st.markdown("---")
+st.title("📈 주식 데이터 대시보드")
+st.markdown("---")
 
 # ======================================
 # 상태 변수
@@ -52,7 +52,7 @@ if "run_update" not in st.session_state:
 if "data_loaded" not in st.session_state:
     st.session_state.data_loaded = False
 
-# 🔥 총합 탭 날짜 확장용 (최근 10일 고정에서, 버튼 눌러서 +10일씩 늘려 보기)
+# 🔥 총합 탭 날짜 확장용 
 if "show_days" not in st.session_state:
     st.session_state.show_days = 10  # 시작: 최근 10일
 
@@ -93,7 +93,7 @@ def _to_datetime(v):
 
     return None
 
-
+# _to_datetime로 바꾼 날짜를 YYYY.MM.DD. 형식 문자열로 변환
 def format_excel_date(v):
     dt = _to_datetime(v)
     if dt:
@@ -109,11 +109,11 @@ def _format_z_cell(v):
     val = pd.to_numeric(v, errors="coerce")
     if pd.isna(val):
         return "-"
-    out = f"{val:.2f}"
+    out = f"{val:.0f}"
     if val > 100:
-        out += " 🔴"
-    elif val < -100:
         out += " 🔵"
+    elif val < -100:
+        out += " 🔴"
     return out
 
 
@@ -121,12 +121,38 @@ def _format_s_cell(v):
     val = pd.to_numeric(v, errors="coerce")
     if pd.isna(val):
         return "-"
-    out = f"{val:.2f}"
+    out = f"{val:.0f}"
     if abs(val - 100) < 0.1:
         out += " 🔴"
     elif abs(val - 0) < 0.1:
         out += " 🔵"
     return out
+
+def _format_q_cell(v):
+    val = pd.to_numeric(v, errors="coerce")
+    if pd.isna(val):
+        return "-"
+    out = f"{val:.0f}"
+    if val > 100:
+        out += " 🔴"
+    elif val < 25:
+        out += " 🔵"
+    return out
+
+def _format_price(x):
+    """종가(가격)를 세 자리 콤마가 있는 문자열로 변환"""
+    try:
+        # None, 빈 문자열 처리
+        if x is None:
+            return ""
+        if isinstance(x, str) and x.strip() == "":
+            return ""
+
+        v = float(x)
+        return f"{v:,.0f}"  # 예: 12345 -> '12,345'
+    except:
+        # 숫자로 변환 안 되면 빈칸 처리
+        return ""
 
 # ======================================
 # 사이드바: 데이터 갱신 버튼
@@ -149,6 +175,7 @@ if st.session_state.run_update:
         ("_totalS.py", "S20/S60/S120 계산"),
         ("_totalZ.py", "Z20/Z60/Z120 계산"),
         ("_gap.py", "GAP 계산"),
+        ("_quant.py", "QUANT 계산"),
     ]
 
     for idx, (sc, desc) in enumerate(scripts):
@@ -200,7 +227,7 @@ if "종목" in wb.sheetnames:
 # ======================================
 # 1. 총합(Z20/Z60/.../GAP) 데이터 로딩
 # ======================================
-sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap"]
+sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap", "quant"]
 
 # 기준 시트 하나 선택 (z20이 됨)
 base_ws = None
@@ -390,7 +417,7 @@ with tab_total:
         # --------------------------------------
         # 🔥 멀티헤더 생성 (1행: 날짜, 2행: 지표명)
         # --------------------------------------
-        metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP"]
+        metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP", "QUANT"]
         base_cols = ["종목코드", "종목명"]
         df_show = df_f[base_cols].copy()
 
@@ -407,6 +434,27 @@ with tab_total:
                 col_tuples.append((lbl, m))
 
         df_show.columns = pd.MultiIndex.from_tuples(col_tuples)
+
+        # 🔥 평균 행 추가 (맨 마지막 행)
+        avg_row = []
+        for col in df_show.columns:
+            if col == ("", "종목코드"):
+                avg_row.append("AVG")     # 혹은 "" 로 비워도 됨
+            elif col == ("", "종목명"):
+                avg_row.append("평균")    # 행 라벨
+            else:
+                lbl, m = col
+                key = (lbl, m)
+                if key in df_f.columns:
+                    # 숫자로 변환 후 평균 계산
+                    s = pd.to_numeric(df_f[key], errors="coerce")
+                    avg_val = s.mean(skipna=True)
+                    avg_row.append(f"{avg_val:.2f}")
+                else:
+                    avg_row.append(None)
+
+        # 맨 아래에 평균 행 추가
+        df_show.loc[len(df_show)] = avg_row
 
         # Z/S 포맷 적용
         for lbl in selected_labels:
@@ -426,6 +474,11 @@ with tab_total:
                 df_show[col] = df_show[col].apply(
                     lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
                 )
+            
+            for m in ["QUANT"]:
+                col = (lbl, m)
+                if col in df_show.columns:
+                    df_show[col] = df_show[col].apply(_format_q_cell)
 
         df_show = df_show.set_index([("", "종목코드"), ("", "종목명")])
 
@@ -472,13 +525,19 @@ with tab_raw:
         # 🔒 컬럼 순서 고정: 종목코드 → 종목명 → 날짜들
         df_raw = df_raw[["종목코드", "종목명"] + date_cols]
 
+        # 🔥 세 자리 콤마 포맷 적용 (모든 날짜 컬럼에)
+        for c in date_cols:
+            df_raw[c] = df_raw[c].apply(_format_price)
+
+        # 컬럼 설정: 종목코드/종목명은 왼쪽 고정, 날짜들은 텍스트 컬럼
         column_config = {
             "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
             "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
         }
 
+        # 날짜 컬럼은 문자열(콤마 포함)이라 TextColumn으로 표시
         for c in date_cols:
-            column_config[c] = st.column_config.NumberColumn(c, format="%.0f")
+            column_config[c] = st.column_config.TextColumn(c)
 
         st.dataframe(
             df_raw,
