@@ -162,12 +162,12 @@ with st.sidebar:
     if st.button("🔄 데이터 갱신 시작"):
         st.session_state.run_update = True
 
-    # ✅ 데이터 갱신이 완료된 경우에만 엑셀 다운로드 버튼 표시
+    # ✅ _stock_value.xlsx 파일이 있으면 언제든 다운로드 버튼 표시
     excel_path = Path("_stock_value.xlsx")
-    if st.session_state.get("data_loaded", False) and excel_path.exists():
+    if excel_path.exists():
         with open(excel_path, "rb") as f:
             st.download_button(
-                label="📥 최신 엑셀 다운로드",
+                label="📥 최신 데이터 다운로드",
                 data=f,
                 file_name="_stock_value.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
