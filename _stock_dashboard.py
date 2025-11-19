@@ -279,7 +279,7 @@ if base_ws:
     oldest_label = selected_infos[0][3]
     latest_label = selected_infos[-1][3]
     indicator_range_msg = (
-        f"📅 표시 범위: **{oldest_label} ~ {latest_label}** "
+        f"📅 종합 표시 범위: **{oldest_label} ~ {latest_label}** "
         f"(최근 {show_days}일 / 전체 {total_days}일)"
     )
 
