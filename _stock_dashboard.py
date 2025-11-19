@@ -333,12 +333,27 @@ if "종가" in wb.sheetnames:
     max_col_c = ws.max_column
 
     # 날짜 헤더
+    close_date_infos = []
     for col in range(3, max_col_c + 1):
         raw = ws.cell(row=1, column=col).value
         if raw is None:
             continue
+
+        # 1) 먼저 _to_datetime으로 시도
         dt = _to_datetime(raw)
-        label = format_excel_date(raw)
+
+        # 2) 그래도 안 되면 숫자 8자리만 뽑아서 날짜로 인식
+        if dt is None:
+            digits = "".join(ch for ch in str(raw) if ch.isdigit())
+            if len(digits) == 8:
+                dt = datetime.strptime(digits, "%Y%m%d")
+
+        # 3) 날짜로 못 바꾸면 건너뜀
+        if dt is None:
+            continue
+
+        # 4) 라벨은 항상 YYYY.MM.DD. 형식으로
+        label = dt.strftime("%Y.%m.%d.")
         close_date_infos.append((col, raw, dt, label))
 
     # 정렬 (과거 → 최신)
