@@ -50,7 +50,7 @@ st.markdown("---")
 if "run_update" not in st.session_state:
     st.session_state.run_update = False
 if "data_loaded" not in st.session_state:
-    st.session_state.data_loaded = False
+    st.session_state.data_loaded = True
 
 # 🔥 총합 탭 날짜 확장용 
 if "show_days" not in st.session_state:
@@ -211,13 +211,11 @@ if st.session_state.run_update:
 # ======================================
 # 데이터 로드
 # ======================================
-if not st.session_state.data_loaded:
-    st.info("👈 왼쪽에서 '데이터 갱신 시작'을 먼저 실행하세요.")
-    st.stop()
-
 excel_files = list(Path(".").glob("_stock_value.xlsx"))
 if not excel_files:
-    st.error("_stock_value.xlsx 파일을 찾지 못했습니다.")
+    st.error("_stock_value.xlsx 파일을 찾지 못했습니다. "
+             "GitHub Actions가 아직 안 돌았거나, "
+             "필요하면 왼쪽의 '데이터 갱신 시작' 버튼을 눌러주세요.")
     st.stop()
 
 excel_file = excel_files[0]
