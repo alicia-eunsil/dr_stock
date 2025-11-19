@@ -171,7 +171,6 @@ with st.sidebar:
                 key="download_excel",
             )
             
-    st.header("데이터 업데이트")
     if st.button("🔄 데이터 갱신 시작"):
         st.session_state.run_update = True
 # ======================================
