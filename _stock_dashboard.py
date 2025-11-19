@@ -50,7 +50,7 @@ if "run_update" not in st.session_state:
 if "data_loaded" not in st.session_state:
     st.session_state.data_loaded = True
 
-# 🔥 총합 탭 날짜 확장용 
+# 🔥 종합 탭 날짜 확장용 
 if "show_days" not in st.session_state:
     st.session_state.show_days = 10  # 시작: 최근 10일
 
@@ -232,7 +232,7 @@ if "종목" in wb.sheetnames:
             stock_info[code] = name
 
 # ======================================
-# 1. 총합(Z20/Z60/.../GAP) 데이터 로딩
+# 1. 종합(Z20/Z60/.../GAP) 데이터 로딩
 # ======================================
 sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap", "quant"]
 
@@ -379,7 +379,7 @@ if "종가" in wb.sheetnames:
 
     close_df = pd.DataFrame.from_dict(close_dict, orient="index").reset_index(drop=True)
 
-    # 🔧 컬럼 이름을 총합 탭과 동일하게 yyyy.mm.dd. 형식으로 통일
+    # 🔧 컬럼 이름을 종합 탭과 동일하게 yyyy.mm.dd. 형식으로 통일
     rename_map = {}
     for col in close_df.columns:
         if col in ["종목코드", "종목명"]:
@@ -393,16 +393,16 @@ wb.close()
 # ======================================
 # 탭 구성
 # ======================================
-tab_total, tab_raw = st.tabs(["1️⃣ 총합", "2️⃣ 원자료"])
+tab_total, tab_raw = st.tabs(["1️⃣ 종합", "2️⃣ 원자료"])
 
 # --------------------------------------
-# 총합 탭
+# 종합 탭
 # --------------------------------------
 with tab_total:
     if indicator_df is None:
-        st.warning("⚠️ 총합 데이터를 불러올 수 없습니다.")
+        st.warning("⚠️ 종합 데이터를 불러올 수 없습니다.")
     else:
-        st.markdown("### 🔍 필터 옵션 (총합)")
+        st.markdown("### 🔍 필터 옵션 (종합)")
         c1, c2 = st.columns(2)
         with c1:
             search = st.text_input("🔎 종목명/종목코드 검색", key="search_total")
@@ -496,7 +496,7 @@ with tab_total:
         )
 
         # 🔥 과거 확장 버튼
-        if st.button("⬅ 과거 10일 더보기(총합)", disabled=(total_days <= st.session_state.show_days)):
+        if st.button("⬅ 과거 10일 더보기(종합)", disabled=(total_days <= st.session_state.show_days)):
             st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
             st.rerun()
 
