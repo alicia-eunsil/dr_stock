@@ -109,9 +109,9 @@ def _format_z_cell(v):
         return "-"
     out = f"{val:.0f}"
     if val > 100:
-        out += " 🔵"
-    elif val < -100:
         out += " 🔴"
+    elif val < -100:
+        out += " 🔵"
     return out
 
 
