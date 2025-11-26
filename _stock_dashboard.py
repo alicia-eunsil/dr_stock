@@ -5,11 +5,9 @@
 import streamlit as st
 import subprocess
 import sys
-import time
 import pandas as pd
 import openpyxl
 from pathlib import Path
-import os
 import bcrypt
 from datetime import datetime, date, timedelta
 
@@ -138,21 +136,6 @@ def _format_q_cell(v):
     elif val < 25:
         out += " 🔵"
     return out
-
-def _format_price(x):
-    """종가(가격)를 세 자리 콤마가 있는 문자열로 변환"""
-    try:
-        # None, 빈 문자열 처리
-        if x is None:
-            return ""
-        if isinstance(x, str) and x.strip() == "":
-            return ""
-
-        v = float(x)
-        return f"{v:,.0f}"  # 예: 12345 -> '12,345'
-    except:
-        # 숫자로 변환 안 되면 빈칸 처리
-        return ""
 
 def render_total_view(indicator_df, selected_labels, indicator_range_msg, total_days):
     if indicator_df is None:
@@ -424,19 +407,22 @@ def render_raw_view(close_df, close_range_msg, total_close_days):
     # 🔒 컬럼 순서 고정: 종목코드 → 종목명 → 날짜들
     df_raw = df_raw[["종목코드", "종목명"] + date_cols]
 
-    # 🔥 세 자리 콤마 포맷 적용 (모든 날짜 컬럼에)
+    # 🔢 날짜 컬럼을 숫자로 변환 (NumberColumn이 숫자형에만 잘 동작하니까)
     for c in date_cols:
-        df_raw[c] = df_raw[c].apply(_format_price)
+        df_raw[c] = pd.to_numeric(df_raw[c], errors="coerce")
 
-    # 컬럼 설정: 종목코드/종목명은 왼쪽 고정, 날짜들은 텍스트 컬럼
+    # 컬럼 설정: 종목코드/종목명은 왼쪽 고정
     column_config = {
         "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
         "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
     }
 
-    # 날짜 컬럼은 문자열(콤마 포함)이라 TextColumn으로 표시
+    # 날짜 컬럼은 NumberColumn으로, 천단위 콤마 포맷 지정
     for c in date_cols:
-        column_config[c] = st.column_config.TextColumn(c)
+        column_config[c] = st.column_config.NumberColumn(
+            c,
+            format="%.0f",  # 12345 → 12,345
+        )
 
     st.dataframe(
         df_raw,
