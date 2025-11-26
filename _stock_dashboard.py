@@ -161,7 +161,7 @@ def render_metric_view(indicator_df, selected_labels):
     - 2열: 종목명
     - 3열~: 날짜별 지표값 (S/Z는 이모지 포함, GAP/QUANT는 숫자만)
     """
-    st.subheader("📈 지표별 선택")
+    st.subheader("📈 지표 선택")
 
     if indicator_df is None or len(indicator_df) == 0:
         st.warning("⚠️ 지표별 데이터를 불러올 수 없습니다.")
