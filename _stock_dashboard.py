@@ -264,7 +264,7 @@ def render_metric_view(indicator_df, selected_labels):
     # -------------------------
     # 5. 테이블 출력
     # -------------------------
-    st.markdown(f"### 📋 {metric} · 날짜별 지표값")
+    st.markdown(f"### 📋 {metric} · 추이")
 
     column_config = {
         "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
