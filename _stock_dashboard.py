@@ -1,4 +1,6 @@
-# _stock_dashboard.py의 업그레이드 버전, 원자료 보기, 더보기 기능 추가
+# _stock_dashboard.py
+# 추가: 원자료 보기, 더보기 기능 추가
+# 추가: 지표별 탭 추가
 
 import streamlit as st
 import subprocess
@@ -151,6 +153,143 @@ def _format_price(x):
     except:
         # 숫자로 변환 안 되면 빈칸 처리
         return ""
+
+def render_metric_view(indicator_df, selected_labels):
+    """
+    지표별 탭:
+    - 1열: 종목코드
+    - 2열: 종목명
+    - 3열~: 날짜별 지표값 (S/Z는 이모지 포함, GAP/QUANT는 숫자만)
+    """
+    st.subheader("📈 지표별 종목 · 일자 조회")
+
+    if indicator_df is None or len(indicator_df) == 0:
+        st.warning("⚠️ 지표별 데이터를 불러올 수 없습니다.")
+        return
+
+    # -------------------------
+    # 0. 선택할 지표 목록 준비
+    # -------------------------
+    metric_options = ["S20", "S60", "S120",
+                      "Z20", "Z60", "Z120",
+                      "GAP", "QUANT"]
+
+    # 실제 indicator_df에 존재하는 지표만 남기기
+    available = []
+    for m in metric_options:
+        # indicator_df 컬럼은 (날짜라벨, 지표명) 형태라서,
+        # 아무 날짜 하나라도 (lbl, m) 이 존재하면 사용 가능하다고 봄
+        if any(((lbl, m) in indicator_df.columns) for lbl in selected_labels):
+            available.append(m)
+
+    if not available:
+        st.error("indicator_df에 S/Z/GAP/QUANT 관련 컬럼이 없습니다.")
+        st.write("현재 indicator_df.columns 예시:", list(indicator_df.columns)[:20])
+        return
+
+    metric = st.selectbox("지표를 선택하세요", available, index=0)
+
+    # -------------------------
+    # 1. 기본 DF 구성 (종목코드, 종목명 + 날짜별 값)
+    # -------------------------
+    df_metric = indicator_df[["종목코드", "종목명"]].copy()
+
+    # 선택된 지표에 대해 날짜별 컬럼 추가
+    for lbl in selected_labels:
+        col_key = (lbl, metric)  # 예: ('2025.01.01.', 'S20')
+        if col_key in indicator_df.columns:
+            df_metric[lbl] = indicator_df[col_key]
+        else:
+            df_metric[lbl] = None
+
+    # -------------------------
+    # 2. 값 포맷팅 (이모지 포함 / 숫자만)
+    # -------------------------
+    def _format_plain(v):
+        val = pd.to_numeric(v, errors="coerce")
+        if pd.isna(val):
+            return "-"
+        return f"{val:.0f}"
+
+    if metric.startswith("S"):
+        formatter = _format_s_cell
+    elif metric.startswith("Z"):
+        formatter = _format_z_cell
+    else:  # GAP, QUANT 등은 기준 없이 숫자만
+        formatter = _format_plain
+
+    for lbl in selected_labels:
+        if lbl in df_metric.columns:
+            df_metric[lbl] = df_metric[lbl].apply(formatter)
+
+    # -------------------------
+    # 3. 🔍 필터 옵션 (검색 + 정렬)
+    # -------------------------
+    st.markdown("### 🔍 필터 옵션 (지표별)")
+    c1, c2 = st.columns(2)
+    with c1:
+        search_metric = st.text_input(
+            "🔎 종목명/종목코드 검색",
+            key="search_metric"
+        )
+    with c2:
+        sort_metric = st.selectbox(
+            "정렬 기준",
+            ["종목코드", "종목명"],
+            key="sort_metric"
+        )
+
+    # 검색 적용
+    df_filtered = df_metric.copy()
+    if search_metric:
+        df_filtered = df_filtered[
+            df_filtered["종목명"].astype(str).str.contains(search_metric, case=False)
+            | df_filtered["종목코드"].astype(str).str.contains(search_metric, case=False)
+        ]
+
+    # 정렬 적용
+    df_filtered = df_filtered.sort_values(by=sort_metric).reset_index(drop=True)
+
+    # -------------------------
+    # 4. 현재 날짜 범위 표시
+    # -------------------------
+    if selected_labels:
+        oldest_label = selected_labels[0]
+        latest_label = selected_labels[-1]
+        st.info(
+            f"📅 지표별 표시 범위: **{oldest_label} ~ {latest_label}** "
+            f"(최근 {len(selected_labels)}일)"
+        )
+
+    # -------------------------
+    # 5. 테이블 출력
+    # -------------------------
+    st.markdown(f"### 📋 {metric} · 날짜별 지표값")
+
+    column_config = {
+        "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
+        "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
+    }
+    for lbl in selected_labels:
+        if lbl in df_filtered.columns:
+            column_config[lbl] = st.column_config.TextColumn(lbl)
+
+    st.dataframe(
+        df_filtered,
+        use_container_width=True,
+        height=600,
+        hide_index=True,
+        column_config=column_config,
+    )
+
+    # -------------------------
+    # 6. ⬅ 과거 10일 더보기(지표별)
+    # -------------------------
+    # total_days와 show_days는 상단에서 이미 전역으로 관리 중
+    global total_days
+    if st.button("⬅ 과거 10일 더보기(지표별)", disabled=(total_days <= st.session_state.show_days)):
+        st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
+        st.rerun()
 
 # ======================================
 # 사이드바: 데이터 갱신 버튼
@@ -321,6 +460,42 @@ if base_ws:
 
     indicator_df = pd.DataFrame.from_dict(data_dict, orient="index").reset_index(drop=True)
 
+    # ======================================
+    # 1-1. 지표별 탭용 df_summary 생성
+    #   - 형태: 날짜 / 종목코드 / 종목명 / S20 / S60 / S120 / Z20 / Z60 / Z120 / GAP / QUANT
+    # ======================================
+    df_summary = None
+    if indicator_df is not None:
+        metrics_for_summary = ["S20", "S60", "S120",
+                               "Z20", "Z60", "Z120",
+                               "GAP", "QUANT"]
+        records = []
+
+        # indicator_df: 행 = 종목, 열 = ("날짜라벨", "지표명") 튜플
+        for _, row in indicator_df.iterrows():
+            code = row["종목코드"]
+            name = row["종목명"]
+
+            # selected_labels: 현재 화면에 표시 중인 날짜 라벨 리스트
+            for lbl in selected_labels:
+                rec = {
+                    "날짜": lbl,
+                    "종목코드": code,
+                    "종목명": name,
+                }
+                for m in metrics_for_summary:
+                    col = (lbl, m)
+                    if col in indicator_df.columns:
+                        rec[m] = row[col]
+                    else:
+                        rec[m] = None
+                records.append(rec)
+
+        df_summary = pd.DataFrame(records)
+else:
+    indicator_df = None
+    df_summary = None
+
 # ======================================
 # 2. 원자료(종가) 데이터 로딩 + 확장 기능
 # ======================================
@@ -408,7 +583,7 @@ wb.close()
 # ======================================
 # 탭 구성
 # ======================================
-tab_total, tab_raw = st.tabs(["1️⃣ 종합", "2️⃣ 원자료"])
+tab_total, tab_metric, tab_raw = st.tabs(["1️⃣ 종합", "2️⃣ 지표별", "3️⃣ 원자료"])
 
 # --------------------------------------
 # 종합 탭
@@ -573,6 +748,12 @@ with tab_raw:
         if st.button("⬅ 과거 10일 더보기(종가)", disabled=(total_close_days <= st.session_state.show_days_raw)):
             st.session_state.show_days_raw = min(st.session_state.show_days_raw + 10, total_close_days)
             st.rerun()
+
+with tab_metric:
+    if indicator_df is None:
+        st.warning("⚠️ 지표별 데이터를 불러올 수 없습니다.")
+    else:
+        render_metric_view(indicator_df, selected_labels)
 
 st.markdown("---")
 st.caption("Created by Alicia")
