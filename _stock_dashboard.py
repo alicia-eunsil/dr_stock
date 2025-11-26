@@ -1,6 +1,6 @@
 # _stock_dashboard.py
 # 추가: 원자료 보기, 더보기 기능 추가
-# 추가: 지표별 탭 추가
+# 추가: 지표별 탭 추가, 탭별 기능 함수화
 
 import streamlit as st
 import subprocess
@@ -154,6 +154,109 @@ def _format_price(x):
         # 숫자로 변환 안 되면 빈칸 처리
         return ""
 
+def render_total_view(indicator_df, selected_labels, indicator_range_msg, total_days):
+    if indicator_df is None:
+        st.warning("⚠️ 종합 데이터를 불러올 수 없습니다.")
+        return
+
+    st.markdown("### 🔍 필터 옵션 (종합)")
+    c1, c2 = st.columns(2)
+    with c1:
+        search = st.text_input("🔎 종목명/종목코드 검색", key="search_total")
+    with c2:
+        sort_by = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_total")
+
+    # 검색 적용
+    df_f = indicator_df.copy()
+    if search:
+        df_f = df_f[
+            df_f["종목명"].astype(str).str.contains(search, case=False) |
+            df_f["종목코드"].astype(str).str.contains(search, case=False)
+        ]
+
+    df_f = df_f.sort_values(by=sort_by)
+
+    st.info(indicator_range_msg)
+
+    # --------------------------------------
+    # 🔥 멀티헤더 생성 (1행: 날짜, 2행: 지표명)
+    # --------------------------------------
+    metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP", "QUANT"]
+    base_cols = ["종목코드", "종목명"]
+    df_show = df_f[base_cols].copy()
+
+    col_tuples = [("", "종목코드"), ("", "종목명")]
+
+    # 날짜 × 지표 조합을 모두 생성 (값 없으면 '-'로)
+    for lbl in selected_labels:
+        for m in metrics:
+            key = (lbl, m)
+            if key in df_f.columns:
+                df_show[(lbl, m)] = df_f[key]
+            else:
+                df_show[(lbl, m)] = "-"
+            col_tuples.append((lbl, m))
+
+    df_show.columns = pd.MultiIndex.from_tuples(col_tuples)
+
+    # 🔥 평균 행 추가 (맨 마지막 행)
+    avg_row = []
+    for col in df_show.columns:
+        if col == ("", "종목코드"):
+            avg_row.append("AVG")     # 혹은 "" 로 비워도 됨
+        elif col == ("", "종목명"):
+            avg_row.append("평균")    # 행 라벨
+        else:
+            lbl, m = col
+            key = (lbl, m)
+            if key in df_f.columns:
+                # 숫자로 변환 후 평균 계산
+                s = pd.to_numeric(df_f[key], errors="coerce")
+                avg_val = s.mean(skipna=True)
+                avg_row.append(f"{avg_val:.2f}")
+            else:
+                avg_row.append(None)
+
+    # 맨 아래에 평균 행 추가
+    df_show.loc[len(df_show)] = avg_row
+
+    # Z/S/Q/GAP 포맷 적용
+    for lbl in selected_labels:
+        for m in ["Z20", "Z60", "Z120"]:
+            col = (lbl, m)
+            if col in df_show.columns:
+                df_show[col] = df_show[col].apply(_format_z_cell)
+
+        for m in ["S20", "S60", "S120"]:
+            col = (lbl, m)
+            if col in df_show.columns:
+                df_show[col] = df_show[col].apply(_format_s_cell)
+
+        # GAP은 숫자 없으면 '-'로 통일
+        col = (lbl, "GAP")
+        if col in df_show.columns:
+            df_show[col] = df_show[col].apply(
+                lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
+            )
+
+        for m in ["QUANT"]:
+            col = (lbl, m)
+            if col in df_show.columns:
+                df_show[col] = df_show[col].apply(_format_q_cell)
+
+    df_show = df_show.set_index([("", "종목코드"), ("", "종목명")])
+
+    st.dataframe(
+        df_show,
+        use_container_width=True,
+        height=600,
+    )
+
+    # 🔥 과거 확장 버튼
+    if st.button("⬅ 과거 10일 더보기(종합)", disabled=(total_days <= st.session_state.show_days)):
+        st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
+        st.rerun()
+
 def render_metric_view(indicator_df, selected_labels):
     """
     지표별 탭:
@@ -170,8 +273,8 @@ def render_metric_view(indicator_df, selected_labels):
     # -------------------------
     # 0. 선택할 지표 목록 준비
     # -------------------------
-    metric_options = ["S20", "S60", "S120",
-                      "Z20", "Z60", "Z120",
+    metric_options = ["Z20", "Z60", "Z120",
+                      "S20", "S60", "S120",                      
                       "GAP", "QUANT"]
 
     # 실제 indicator_df에 존재하는 지표만 남기기
@@ -289,6 +392,63 @@ def render_metric_view(indicator_df, selected_labels):
     global total_days
     if st.button("⬅ 과거 10일 더보기(지표별)", disabled=(total_days <= st.session_state.show_days)):
         st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
+        st.rerun()
+
+def render_raw_view(close_df, close_range_msg, total_close_days):
+    if close_df is None:
+        st.warning("⚠️ 원자료(종가) 데이터를 불러올 수 없습니다.")
+        return
+
+    st.markdown("### 🔍 필터 옵션 (원자료)")
+    r1, r2 = st.columns(2)
+    with r1:
+        search_raw = st.text_input("🔎 종목명/종목코드 검색", key="search_raw")
+    with r2:
+        sort_raw = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_raw")
+
+    df_raw = close_df.copy()
+
+    if search_raw:
+        df_raw = df_raw[
+            df_raw["종목코드"].astype(str).str.contains(search_raw, case=False) |
+            df_raw["종목명"].astype(str).str.contains(search_raw, case=False)
+        ]
+
+    df_raw = df_raw.sort_values(by=sort_raw)
+
+    st.info(close_range_msg)
+
+    # 표시 조건 설정
+    date_cols = [c for c in df_raw.columns if c not in ["종목코드", "종목명"]]
+
+    # 🔒 컬럼 순서 고정: 종목코드 → 종목명 → 날짜들
+    df_raw = df_raw[["종목코드", "종목명"] + date_cols]
+
+    # 🔥 세 자리 콤마 포맷 적용 (모든 날짜 컬럼에)
+    for c in date_cols:
+        df_raw[c] = df_raw[c].apply(_format_price)
+
+    # 컬럼 설정: 종목코드/종목명은 왼쪽 고정, 날짜들은 텍스트 컬럼
+    column_config = {
+        "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
+        "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
+    }
+
+    # 날짜 컬럼은 문자열(콤마 포함)이라 TextColumn으로 표시
+    for c in date_cols:
+        column_config[c] = st.column_config.TextColumn(c)
+
+    st.dataframe(
+        df_raw,
+        use_container_width=True,
+        height=600,
+        hide_index=True,
+        column_config=column_config,
+    )
+
+    # 🔥 과거 확장 버튼
+    if st.button("⬅ 과거 10일 더보기(종가)", disabled=(total_close_days <= st.session_state.show_days_raw)):
+        st.session_state.show_days_raw = min(st.session_state.show_days_raw + 10, total_close_days)
         st.rerun()
 
 # ======================================
@@ -459,39 +619,7 @@ if base_ws:
                 data_dict[code][(lbl, s.upper())] = val
 
     indicator_df = pd.DataFrame.from_dict(data_dict, orient="index").reset_index(drop=True)
-
-    # ======================================
-    # 1-1. 지표별 탭용 df_summary 생성
-    #   - 형태: 날짜 / 종목코드 / 종목명 / S20 / S60 / S120 / Z20 / Z60 / Z120 / GAP / QUANT
-    # ======================================
-    df_summary = None
-    if indicator_df is not None:
-        metrics_for_summary = ["S20", "S60", "S120",
-                               "Z20", "Z60", "Z120",
-                               "GAP", "QUANT"]
-        records = []
-
-        # indicator_df: 행 = 종목, 열 = ("날짜라벨", "지표명") 튜플
-        for _, row in indicator_df.iterrows():
-            code = row["종목코드"]
-            name = row["종목명"]
-
-            # selected_labels: 현재 화면에 표시 중인 날짜 라벨 리스트
-            for lbl in selected_labels:
-                rec = {
-                    "날짜": lbl,
-                    "종목코드": code,
-                    "종목명": name,
-                }
-                for m in metrics_for_summary:
-                    col = (lbl, m)
-                    if col in indicator_df.columns:
-                        rec[m] = row[col]
-                    else:
-                        rec[m] = None
-                records.append(rec)
-
-        df_summary = pd.DataFrame(records)
+    
 else:
     indicator_df = None
     df_summary = None
@@ -592,103 +720,16 @@ with tab_total:
     if indicator_df is None:
         st.warning("⚠️ 종합 데이터를 불러올 수 없습니다.")
     else:
-        st.markdown("### 🔍 필터 옵션 (종합)")
-        c1, c2 = st.columns(2)
-        with c1:
-            search = st.text_input("🔎 종목명/종목코드 검색", key="search_total")
-        with c2:
-            sort_by = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_total")
+        render_total_view(indicator_df, selected_labels, indicator_range_msg, total_days)
 
-        # 검색 적용
-        df_f = indicator_df.copy()
-        if search:
-            df_f = df_f[
-                df_f["종목명"].astype(str).str.contains(search, case=False) |
-                df_f["종목코드"].astype(str).str.contains(search, case=False)
-            ]
-
-        df_f = df_f.sort_values(by=sort_by)
-
-        st.info(indicator_range_msg)
-
-        # --------------------------------------
-        # 🔥 멀티헤더 생성 (1행: 날짜, 2행: 지표명)
-        # --------------------------------------
-        metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP", "QUANT"]
-        base_cols = ["종목코드", "종목명"]
-        df_show = df_f[base_cols].copy()
-
-        col_tuples = [("", "종목코드"), ("", "종목명")]
-
-        # 날짜 × 지표 조합을 모두 생성 (값 없으면 '-'로)
-        for lbl in selected_labels:
-            for m in metrics:
-                key = (lbl, m)
-                if key in df_f.columns:
-                    df_show[(lbl, m)] = df_f[key]
-                else:
-                    df_show[(lbl, m)] = "-"
-                col_tuples.append((lbl, m))
-
-        df_show.columns = pd.MultiIndex.from_tuples(col_tuples)
-
-        # 🔥 평균 행 추가 (맨 마지막 행)
-        avg_row = []
-        for col in df_show.columns:
-            if col == ("", "종목코드"):
-                avg_row.append("AVG")     # 혹은 "" 로 비워도 됨
-            elif col == ("", "종목명"):
-                avg_row.append("평균")    # 행 라벨
-            else:
-                lbl, m = col
-                key = (lbl, m)
-                if key in df_f.columns:
-                    # 숫자로 변환 후 평균 계산
-                    s = pd.to_numeric(df_f[key], errors="coerce")
-                    avg_val = s.mean(skipna=True)
-                    avg_row.append(f"{avg_val:.2f}")
-                else:
-                    avg_row.append(None)
-
-        # 맨 아래에 평균 행 추가
-        df_show.loc[len(df_show)] = avg_row
-
-        # Z/S 포맷 적용
-        for lbl in selected_labels:
-            for m in ["Z20", "Z60", "Z120"]:
-                col = (lbl, m)
-                if col in df_show.columns:
-                    df_show[col] = df_show[col].apply(_format_z_cell)
-
-            for m in ["S20", "S60", "S120"]:
-                col = (lbl, m)
-                if col in df_show.columns:
-                    df_show[col] = df_show[col].apply(_format_s_cell)
-
-            # GAP은 숫자 없으면 '-'로 통일
-            col = (lbl, "GAP")
-            if col in df_show.columns:
-                df_show[col] = df_show[col].apply(
-                    lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
-                )
-            
-            for m in ["QUANT"]:
-                col = (lbl, m)
-                if col in df_show.columns:
-                    df_show[col] = df_show[col].apply(_format_q_cell)
-
-        df_show = df_show.set_index([("", "종목코드"), ("", "종목명")])
-
-        st.dataframe(
-            df_show,
-            use_container_width=True,
-            height=600,
-        )
-
-        # 🔥 과거 확장 버튼
-        if st.button("⬅ 과거 10일 더보기(종합)", disabled=(total_days <= st.session_state.show_days)):
-            st.session_state.show_days = min(st.session_state.show_days + 10, total_days)
-            st.rerun()
+# --------------------------------------
+# 지표별 탭
+# --------------------------------------
+with tab_metric:
+    if indicator_df is None:
+        st.warning("⚠️ 지표별 데이터를 불러올 수 없습니다.")
+    else:
+        render_metric_view(indicator_df, selected_labels)
 
 # --------------------------------------
 # 원자료 탭
@@ -697,63 +738,7 @@ with tab_raw:
     if close_df is None:
         st.warning("⚠️ 원자료(종가) 데이터를 불러올 수 없습니다.")
     else:
-        st.markdown("### 🔍 필터 옵션 (원자료)")
-        r1, r2 = st.columns(2)
-        with r1:
-            search_raw = st.text_input("🔎 종목명/종목코드 검색", key="search_raw")
-        with r2:
-            sort_raw = st.selectbox("정렬 기준", ["종목코드", "종목명"], key="sort_raw")
-
-        df_raw = close_df.copy()
-
-        if search_raw:
-            df_raw = df_raw[
-                df_raw["종목코드"].astype(str).str.contains(search_raw, case=False) |
-                df_raw["종목명"].astype(str).str.contains(search_raw, case=False)
-            ]
-
-        df_raw = df_raw.sort_values(by=sort_raw)
-
-        st.info(close_range_msg)
-
-        # 표시 조건 설정
-        date_cols = [c for c in df_raw.columns if c not in ["종목코드", "종목명"]]
-
-        # 🔒 컬럼 순서 고정: 종목코드 → 종목명 → 날짜들
-        df_raw = df_raw[["종목코드", "종목명"] + date_cols]
-
-        # 🔥 세 자리 콤마 포맷 적용 (모든 날짜 컬럼에)
-        for c in date_cols:
-            df_raw[c] = df_raw[c].apply(_format_price)
-
-        # 컬럼 설정: 종목코드/종목명은 왼쪽 고정, 날짜들은 텍스트 컬럼
-        column_config = {
-            "종목코드": st.column_config.TextColumn("종목코드", width="small", pinned="left"),
-            "종목명": st.column_config.TextColumn("종목명", width="small", pinned="left"),
-        }
-
-        # 날짜 컬럼은 문자열(콤마 포함)이라 TextColumn으로 표시
-        for c in date_cols:
-            column_config[c] = st.column_config.TextColumn(c)
-
-        st.dataframe(
-            df_raw,
-            use_container_width=True,
-            height=600,
-            hide_index=True,
-            column_config=column_config,
-        )
-
-        # 🔥 과거 확장 버튼
-        if st.button("⬅ 과거 10일 더보기(종가)", disabled=(total_close_days <= st.session_state.show_days_raw)):
-            st.session_state.show_days_raw = min(st.session_state.show_days_raw + 10, total_close_days)
-            st.rerun()
-
-with tab_metric:
-    if indicator_df is None:
-        st.warning("⚠️ 지표별 데이터를 불러올 수 없습니다.")
-    else:
-        render_metric_view(indicator_df, selected_labels)
+        render_raw_view(close_df, close_range_msg, total_close_days)
 
 st.markdown("---")
 st.caption("Created by Alicia")
