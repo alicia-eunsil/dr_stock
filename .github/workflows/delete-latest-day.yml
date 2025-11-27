@@ -1,3 +1,5 @@
+# 장중 테스트할 경우 종가가 아닌 시가가 저장됨, 강제로 최신일 데이터를 실행하는 파일임
+
 name: Delete latest day from stock workbook
 
 on:
