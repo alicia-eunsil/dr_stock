@@ -1,6 +1,6 @@
 # 장중 테스트할 경우 종가가 아닌 시가가 저장됨, 강제로 최신일 데이터를 실행하는 파일임
 
-name: Delete latest day from stock workbook
+name: Delete dates from stock workbook
 
 on:
   # ✅ GitHub 웹 UI에서 수동 실행
@@ -11,8 +11,8 @@ on:
   #   - cron: "10 7 * * *"  # 예: 매일 16:10 KST (07:10 UTC)
 
 jobs:
-  delete-latest-day:
-    runs-on: ubuntu-latest
+  delete-dates:
+    runs-on: ubuntu-dates
 
     steps:
       # 1) repo 체크아웃
@@ -31,9 +31,9 @@ jobs:
           pip install openpyxl
 
       # 4) 최신일 삭제 스크립트 실행
-      - name: Run delete_latest_day script
+      - name: Run delete_dates script
         run: |
-          python _delete_latest_day.py
+          python _delete_dates.py
 
       # 5) 변경된 엑셀 파일 커밋 & 푸시
       - name: Commit and push changes
