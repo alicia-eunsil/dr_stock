@@ -1,0 +1,43 @@
+name: Delete latest day from stock workbook
+
+on:
+  # ✅ GitHub 웹 UI에서 수동 실행
+  workflow_dispatch:
+
+  # (선택) 특정 시간에 자동 실행하고 싶으면 아래 주석을 풀면 됨
+  # schedule:
+  #   - cron: "10 7 * * *"  # 예: 매일 16:10 KST (07:10 UTC)
+
+jobs:
+  delete-latest-day:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) repo 체크아웃
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # 2) Python 세팅
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 3) openpyxl 설치
+      - name: Install dependencies
+        run: |
+          pip install openpyxl
+
+      # 4) 최신일 삭제 스크립트 실행
+      - name: Run delete_latest_day script
+        run: |
+          python _delete_latest_day.py
+
+      # 5) 변경된 엑셀 파일 커밋 & 푸시
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add _stock_value.xlsx
+          git commit -m "Delete latest date from stock workbook" || echo "No changes to commit"
+          git push
