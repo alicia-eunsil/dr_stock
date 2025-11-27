@@ -1,4 +1,4 @@
-# 장중 테스트할 경우 종가가 아닌 시가가 저장됨, 강제로 최신일 데이터를 실행하는 파일임
+# 장중 테스트할 경우 종가가 아닌 시가가 저장됨, 강제로 최신일 데이터를 삭제하는 파일임
 
 name: Delete dates from stock workbook
 
@@ -12,7 +12,7 @@ on:
 
 jobs:
   delete-dates:
-    runs-on: ubuntu-dates
+    runs-on: ubuntu-latest   # 🔴 여기! ubuntu-dates → ubuntu-latest 로 수정
 
     steps:
       # 1) repo 체크아웃
@@ -30,7 +30,7 @@ jobs:
         run: |
           pip install openpyxl
 
-      # 4) 최신일 삭제 스크립트 실행
+      # 4) 날짜 삭제 스크립트 실행
       - name: Run delete_dates script
         run: |
           python _delete_dates.py
