@@ -1,146 +1,118 @@
-# _delete_latest_day.py
-# _stock_value.xlsx에서 "최신 날짜(컬럼)"를 모든 시트에서 한 번에 삭제하는 롤백 스크립트
+# _delete_dates_range.py
+# 지정한 날짜 범위(start_date ~ end_date)의 열을
+# '종목' 시트를 제외한 모든 시트에서 강제로 삭제하는 스크립트
 
-import sys
-from pathlib import Path
 import openpyxl
+from datetime import datetime, timedelta
+from pathlib import Path
 
 
-# ------------------------------
-# 1. 유틸: 헤더에서 마지막 날짜(YYYYMMDD) 찾기
-# ------------------------------
-def get_last_date_from_sheet(ws):
-    """
-    ws(Worksheet)의 1행, 3열 이후 헤더들에서
-    숫자 8자리(YYYYMMDD) 형태의 값을 모아
-    가장 최신(최대) 날짜 문자열을 반환.
-    못 찾으면 None 반환.
-    """
-    dates = []
-    for col in range(3, ws.max_column + 1):
-        v = ws.cell(row=1, column=col).value
-        if v is None:
-            continue
-        s = "".join(ch for ch in str(v) if ch.isdigit())
-        if len(s) == 8:
-            dates.append(s)
+EXCEL_FILE = "_stock_value.xlsx"
 
-    if not dates:
+# 🔹 삭제할 날짜 범위 직접 지정 (YYYYMMDD)
+START_DATE = "20251127"
+END_DATE   = "20251127"
+
+
+def parse_header_date(val):
+    """헤더 값을 datetime 으로 변환"""
+    if val is None:
         return None
 
-    return max(dates)  # 문자열 비교해도 YYYYMMDD 포맷이면 최신이 가장 큼
+    if isinstance(val, datetime):
+        return datetime(val.year, val.month, val.day)
+
+    # Excel serial
+    if isinstance(val, (int, float)):
+        try:
+            base = datetime(1899, 12, 30)
+            return base + timedelta(days=int(val))
+        except:
+            pass
+
+    s = str(val).strip()
+    if not s:
+        return None
+
+    # 숫자 8자리(YYYYMMDD) 우선 처리
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) == 8:
+        try:
+            return datetime.strptime(digits, "%Y%m%d")
+        except:
+            pass
+
+    # 여러 포맷 시도
+    for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%Y.%m.%d.", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt)
+        except:
+            pass
+
+    return None
 
 
-# ------------------------------
-# 2. 유틸: 특정 날짜(YYYYMMDD)에 해당하는 컬럼 삭제
-# ------------------------------
-def delete_date_col(ws, ymd):
-    """
-    ws(Worksheet)에서 1행, 3열 이후 헤더를 돌면서
-    숫자 8자리가 ymd와 같은 컬럼을 찾아 delete_cols로 삭제.
-    삭제 성공 시 True, 못 찾으면 False 반환.
-    """
-    target_col = None
-
-    for col in range(3, ws.max_column + 1):
-        v = ws.cell(row=1, column=col).value
-        if v is None:
-            continue
-        s = "".join(ch for ch in str(v) if ch.isdigit())
-        if s == ymd:
-            target_col = col
-            break
-
-    if target_col is not None:
-        ws.delete_cols(target_col)
-        return True
-    return False
+def daterange(start, end):
+    """start~end 날짜 리스트 반환"""
+    cur = start
+    while cur <= end:
+        yield cur
+        cur += timedelta(days=1)
 
 
-# ------------------------------
-# 3. 메인 로직
-# ------------------------------
 def main():
-    excel_path = Path("_stock_value.xlsx")
-    if not excel_path.exists():
-        print("❌ _stock_value.xlsx 파일을 찾을 수 없습니다.")
-        return 1
+    path = Path(EXCEL_FILE)
+    if not path.exists():
+        print(f"❌ 파일이 없습니다: {EXCEL_FILE}")
+        return
 
-    wb = openpyxl.load_workbook(excel_path)
+    wb = openpyxl.load_workbook(EXCEL_FILE)
 
-    # 🔥 최신일 삭제 대상 시트 목록
-    target_sheet_names = [
-        "종가",
-        "거래량",
-        "지수",
-        "z20", "z60", "z120",
-        "s20", "s60", "s120",
-        "gap", "quant",
-    ]
+    # ✅ 삭제 대상 시트: '종목'을 제외한 모든 시트
+    target_sheets = [s for s in wb.sheetnames if s != "종목"]
 
-    # 실제로 존재하는 시트만 사용
-    ws_list = []
-    for name in target_sheet_names:
-        if name in wb.sheetnames:
-            ws_list.append(wb[name])
-        else:
-            print(f"ℹ️ 워크북에 '{name}' 시트가 없어 건너뜁니다.")
+    # 날짜 범위 준비
+    start_dt = datetime.strptime(START_DATE, "%Y%m%d")
+    end_dt = datetime.strptime(END_DATE, "%Y%m%d")
+    delete_dates = set(d.date() for d in daterange(start_dt, end_dt))
 
-    if not ws_list:
-        print("❌ 삭제할 대상 시트가 하나도 없습니다.")
-        return 1
+    print(f"🗑 삭제할 날짜 범위: {START_DATE} ~ {END_DATE}")
+    print(f"   총 {len(delete_dates)}일")
+    print(f"   대상 시트: {', '.join(target_sheets)}\n")
 
-    # --------------------------
-    # 3-1. 각 시트의 마지막 날짜 수집
-    # --------------------------
-    last_dates = []  # (시트명, 마지막날짜 or None)
-    for ws in ws_list:
-        last_ymd = get_last_date_from_sheet(ws)
-        last_dates.append((ws.title, last_ymd))
+    for sheet_name in target_sheets:
+        ws = wb[sheet_name]
+        print(f"\n📄 '{sheet_name}' 시트 처리 중...")
 
-    # 날짜가 하나도 없는 시트 체크
-    all_none = all(d is None for _, d in last_dates)
-    if all_none:
-        print("❌ 어느 시트에서도 날짜 헤더를 찾지 못했습니다.")
-        return 1
+        cols_to_delete = []
 
-    # 실제 날짜가 있는 시트만 대상으로 날짜 일관성 체크
-    effective = [(name, d) for name, d in last_dates if d is not None]
-    unique_dates = {d for _, d in effective}
+        max_col = ws.max_column
+        # 1행, 3열부터 날짜 헤더라고 가정
+        for col in range(3, max_col + 1):
+            raw = ws.cell(row=1, column=col).value
+            dt = parse_header_date(raw)
+            if dt is None:
+                continue
 
-    if len(unique_dates) != 1:
-        print("❌ 시트별 마지막 날짜가 서로 다릅니다. 삭제를 중단합니다.")
-        for name, d in last_dates:
-            print(f"  - {name}: {d}")
-        return 1
+            if dt.date() in delete_dates:
+                cols_to_delete.append(col)
 
-    target_date = unique_dates.pop()
-    print(f"📅 삭제 대상 날짜(YYYYMMDD): {target_date}")
-    print("   (모든 시트의 마지막 날짜가 동일함을 확인했습니다.)")
+        if not cols_to_delete:
+            print(f"   → 삭제할 날짜 없음 (패스)")
+            continue
 
-    # --------------------------
-    # 3-2. 각 시트에서 해당 날짜 컬럼 삭제
-    # --------------------------
-    any_deleted = False
-    for ws in ws_list:
-        ok = delete_date_col(ws, target_date)
-        if ok:
-            any_deleted = True
-            print(f"  ✅ '{ws.title}' 시트에서 {target_date} 컬럼 삭제 완료")
-        else:
-            print(f"  ⚠️ '{ws.title}' 시트에서 {target_date} 컬럼을 찾지 못했습니다.")
+        print(f"   → 삭제할 열 번호: {cols_to_delete}")
 
-    if not any_deleted:
-        print("❌ 어느 시트에서도 해당 날짜 컬럼을 삭제하지 못했습니다.")
-        return 1
+        # 열 삭제 (뒤에서부터 삭제해야 인덱스가 안 틀림)
+        for col in sorted(cols_to_delete, reverse=True):
+            ws.delete_cols(col)
 
-    # --------------------------
-    # 3-3. 저장
-    # --------------------------
-    wb.save(excel_path)
-    print(f"\n✅ 최신일({target_date}) 삭제 완료: {excel_path}")
-    return 0
+        print(f"   ✔ 삭제 완료 ({len(cols_to_delete)}개 열 삭제)")
+
+    wb.save(EXCEL_FILE)
+    wb.close()
+    print("\n🎉 모든 작업 완료!")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
