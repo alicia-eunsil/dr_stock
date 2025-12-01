@@ -2,6 +2,7 @@
 # 추가: 원자료 보기, 더보기 기능 추가
 # 추가: 지표별 탭 추가, 탭별 기능 함수화
 # 추가: 종합탭 내 지수 보여주기 
+# 추가: 종가를 활용하여 표준편차 구하고 값을 보여주는 기능 추가
 
 import streamlit as st
 import subprocess
@@ -177,7 +178,7 @@ def render_total_view(indicator_df, selected_labels, indicator_range_msg, total_
     # --------------------------------------
     # 🔥 멀티헤더 생성 (1행: 날짜, 2행: 지표명)
     # --------------------------------------
-    metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP", "QUANT"]
+    metrics = ["Z20", "Z60", "Z120", "S20", "S60", "S120", "GAP", "QUANT", "STD"]
     base_cols = ["종목코드", "종목명"]
     df_show = df_f[base_cols].copy()
 
@@ -230,11 +231,12 @@ def render_total_view(indicator_df, selected_labels, indicator_range_msg, total_
             if col in df_show.columns:
                 df_show[col] = df_show[col].apply(_format_s_cell)
 
-        col = (lbl, "GAP")
-        if col in df_show.columns:
-            df_show[col] = df_show[col].apply(
-                lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
-            )
+        for metric in ["GAP", "STD"]:
+            col = (lbl, metric)
+            if col in df_show.columns:
+                df_show[col] = df_show[col].apply(
+                    lambda v: "-" if pd.isna(pd.to_numeric(v, errors="coerce")) else v
+                )
 
         for m in ["QUANT"]:
             col = (lbl, m)
@@ -298,7 +300,7 @@ def render_metric_view(indicator_df, selected_labels):
 
     metric_options = ["Z20", "Z60", "Z120",
                       "S20", "S60", "S120",
-                      "GAP", "QUANT"]
+                      "GAP", "QUANT", "STD"]
 
     # 실제 존재하는 지표만
     available = []
@@ -307,7 +309,7 @@ def render_metric_view(indicator_df, selected_labels):
             available.append(m)
 
     if not available:
-        st.error("indicator_df에 S/Z/GAP/QUANT 관련 컬럼이 없습니다.")
+        st.error("indicator_df에 S/Z/GAP/QUANT/STD 관련 컬럼이 없습니다.")
         st.write("현재 indicator_df.columns 예시:", list(indicator_df.columns)[:20])
         return
 
@@ -332,7 +334,15 @@ def render_metric_view(indicator_df, selected_labels):
             return "-"
         return f"{val:.0f}"
 
-    if metric.startswith("S"):
+    def _format_std_cell(v):
+        val = pd.to_numeric(v, errors="coerce")
+        if pd.isna(val):
+            return "-"
+        return f"{val:.2f}"
+
+    if metric == "STD":
+        formatter = _format_std_cell
+    elif metric.startswith("S"):
         formatter = _format_s_cell
     elif metric.startswith("Z"):
         formatter = _format_z_cell
@@ -487,7 +497,8 @@ if st.session_state.run_update:
         ("_totalS.py", "S20/S60/S120 계산"),
         ("_totalZ.py", "Z20/Z60/Z120 계산"),
         ("_gap.py", "GAP 계산"),
-        ("_quant.py", "QUANT 계산"),
+        ("_quant.py", "거래량 계산"),
+        ("_std.py", "표준편차 계산"),
     ]
 
     for idx, (sc, desc) in enumerate(scripts):
@@ -537,7 +548,7 @@ if "종목" in wb.sheetnames:
 # ======================================
 # 8. 종합(Z20/Z60/S/GAP/QUANT) 데이터 로딩
 # ======================================
-sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap", "quant"]
+sheet_names = ["z20", "z60", "z120", "s20", "s60", "s120", "gap", "quant", "std"]
 
 base_ws = None
 for s in sheet_names:
