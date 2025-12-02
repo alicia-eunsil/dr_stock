@@ -43,7 +43,8 @@ jobs:
           python "_totalS.py"          # 2) S20/S60/S120 계산
           python "_totalZ.py"          # 3) Z20/Z60/Z120 계산
           python "_gap.py"             # 4) GAP 계산
-          python "_quant.py"           # 5) QUANT 계산
+          python "_quant.py"           # 5) 거래량 계산
+          python "_std.py"             # 6) 표준편차 계산
 
       - name: Commit & push if changed
         run: |
