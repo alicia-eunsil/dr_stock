@@ -14,6 +14,11 @@ import bcrypt
 from datetime import datetime, date, timedelta
 
 # ======================================
+# 페이지 설정
+# ======================================
+st.set_page_config(page_title="주식 데이터 대시보드", page_icon="📈", layout="wide")
+
+# ======================================
 # 0. 인증 (간단 비밀번호)
 # ======================================
 ACCESS_CODE_HASH = b"$2b$12$gDBpQYK.g938H.8cNwLeUu/VRidCP1GxqusJiEQzVnvaSrG4CBE6K"
@@ -38,11 +43,6 @@ if not st.session_state["authenticated"]:
             st.error("Invalid code")
 
     st.stop()
-
-# ======================================
-# 페이지 설정
-# ======================================
-st.set_page_config(page_title="주식 데이터 대시보드", page_icon="📈", layout="wide")
 
 # ======================================
 # 1. 전역 상태 변수
