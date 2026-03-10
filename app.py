@@ -194,20 +194,20 @@ if not history.empty:
 detail_cols = st.columns(2)
 detail_cols[0].write(
     {
-        "close": f"{int(selected_row['close']):,}",
-        "knee_score": int(selected_row["knee_score"]),
-        "knee_grade": selected_row["knee_grade"],
-        "knee_reasons": selected_row["knee_reasons"],
-        "knee_confirmed": bool(selected_row["knee_confirmed"]),
+        "전일 종가": f"{int(selected_row['close']):,}",
+        "평가점수": int(selected_row["knee_score"]),
+        "평가등급": selected_row["knee_grade"],
+        "평가근거": selected_row["knee_reasons"],
+        "확인신호 여부": bool(selected_row["knee_confirmed"]),
     }
 )
 detail_cols[1].write(
     {
-        "close": f"{int(selected_row['close']):,}",
-        "shoulder_score": int(selected_row["shoulder_score"]),
-        "shoulder_grade": selected_row["shoulder_grade"],
-        "shoulder_reasons": selected_row["shoulder_reasons"],
-        "shoulder_confirmed": bool(selected_row["shoulder_confirmed"]),
+        "전일 종가": f"{int(selected_row['close']):,}",
+        "평가점수": int(selected_row["shoulder_score"]),
+        "평가등급": selected_row["shoulder_grade"],
+        "평가근거": selected_row["shoulder_reasons"],
+        "확인신호 여부": bool(selected_row["shoulder_confirmed"]),
     }
 )
 
