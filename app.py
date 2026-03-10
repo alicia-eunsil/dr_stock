@@ -16,6 +16,7 @@ st.caption("Daily close-based reversal monitoring dashboard for Korean stocks.")
 
 config = load_config()
 paths = config["paths"]
+CANDIDATE_DISPLAY_MIN_SCORE = 50
 
 
 def render_candidate_help(title: str, score_label: str, reasons_label: str) -> None:
@@ -112,8 +113,8 @@ header_cols[0].metric("Analysis Date", analysis_date)
 header_cols[1].metric("Knee Strong", int((signals_df["knee_grade"] == "Strong").sum()))
 header_cols[2].metric("Shoulder Strong", int((signals_df["shoulder_grade"] == "Strong").sum()))
 
-knee_view = signals_df[signals_df["knee_score"] >= config["runtime"]["signal_threshold"]].copy()
-shoulder_view = signals_df[signals_df["shoulder_score"] >= config["runtime"]["signal_threshold"]].copy()
+knee_view = signals_df[signals_df["knee_score"] >= CANDIDATE_DISPLAY_MIN_SCORE].copy()
+shoulder_view = signals_df[signals_df["shoulder_score"] >= CANDIDATE_DISPLAY_MIN_SCORE].copy()
 
 knee_header_col, knee_help_col = st.columns([20, 1])
 with knee_header_col:
@@ -137,7 +138,7 @@ st.dataframe(
     hide_index=True,
 )
 
-st.subheader("Symbol Detail")
+st.subheader("종목 상세")
 st.caption("후보 종목만 선택할 수 있습니다. Knee / Shoulder를 나눠서 고르세요.")
 
 knee_options = (knee_view["symbol"] + " | " + knee_view["name"]).tolist()
@@ -173,9 +174,25 @@ history = load_existing_history(Path(paths["raw_dir"]) / f"{selected_symbol}.csv
 if not history.empty:
     history = prepare_history_for_chart(history)
     figure = go.Figure()
-    figure.add_trace(go.Scatter(x=history["date"], y=history["close"], mode="lines", name="Close"))
+    figure.add_trace(
+        go.Scatter(
+            x=history["date"],
+            y=history["close"],
+            mode="markers",
+            name="Close",
+            marker=dict(size=7),
+        )
+    )
     if "ma_20" in history.columns:
-        figure.add_trace(go.Scatter(x=history["date"], y=history["ma_20"], mode="lines", name="MA20"))
+        figure.add_trace(
+            go.Scatter(
+                x=history["date"],
+                y=history["ma_20"],
+                mode="markers",
+                name="MA20",
+                marker=dict(size=5),
+            )
+        )
     figure.update_layout(
         height=420,
         margin=dict(l=20, r=20, t=20, b=20),
@@ -191,29 +208,9 @@ if not history.empty:
     )
     st.plotly_chart(figure, use_container_width=True)
 
-detail_cols = st.columns(2)
-detail_cols[0].write(
-    {
-        "전일 종가": f"{int(selected_row['close']):,}",
-        "평가점수": int(selected_row["knee_score"]),
-        "평가등급": selected_row["knee_grade"],
-        "평가근거": selected_row["knee_reasons"],
-        "확인신호 여부": bool(selected_row["knee_confirmed"]),
-    }
-)
-detail_cols[1].write(
-    {
-        "전일 종가": f"{int(selected_row['close']):,}",
-        "평가점수": int(selected_row["shoulder_score"]),
-        "평가등급": selected_row["shoulder_grade"],
-        "평가근거": selected_row["shoulder_reasons"],
-        "확인신호 여부": bool(selected_row["shoulder_confirmed"]),
-    }
-)
-
 validation_header_col, validation_help_col = st.columns([20, 1])
 with validation_header_col:
-    st.subheader("Validation")
+    st.subheader("예측평가")
 with validation_help_col:
     render_validation_help()
 if not validation_df.empty:
