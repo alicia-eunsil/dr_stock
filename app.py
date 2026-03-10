@@ -179,6 +179,11 @@ detail_cols[1].write(
 )
 
 st.subheader("Validation")
+st.caption(
+    "이 표는 과거에 나온 신호가 이후 며칠 뒤 실제로 맞았는지 확인하는 영역입니다. "
+    "`ret_1d`, `ret_3d`, `ret_5d`, `ret_10d`는 신호 발생 후 각각 1일, 3일, 5일, 10일 뒤 수익률입니다. "
+    "`knee_success`는 5일 내 +3% 이상 상승 여부, `shoulder_success`는 5일 내 -3% 이하 하락 여부를 뜻합니다."
+)
 if not validation_df.empty:
     symbol_validation = validation_df[validation_df["symbol"] == selected_symbol]
     st.dataframe(symbol_validation, use_container_width=True, hide_index=True)
