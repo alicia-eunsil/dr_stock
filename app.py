@@ -17,7 +17,7 @@ st.caption("Daily close-based reversal monitoring dashboard for Korean stocks.")
 config = load_config()
 paths = config["paths"]
 CANDIDATE_DISPLAY_MIN_SCORE = 50
-CANDIDATE_TABLE_HEIGHT = 420
+CANDIDATE_TABLE_HEIGHT = 245
 
 
 def render_candidate_help(title: str, score_label: str, reasons_label: str) -> None:
@@ -137,6 +137,38 @@ def format_candidate_view(frame: pd.DataFrame, score_column: str, reasons_column
     return view
 
 
+def candidate_column_config() -> dict:
+    return {
+        "종목코드": st.column_config.TextColumn("종목코드", width="small"),
+        "종목명": st.column_config.TextColumn("종목명", width="small"),
+        "전일 종가": st.column_config.TextColumn("전일 종가", width="small"),
+        "전일대비등락률": st.column_config.TextColumn("전일대비등락률", width="small"),
+        "평가점수": st.column_config.NumberColumn("평가점수", width="small"),
+        "평가등급": st.column_config.TextColumn("평가등급", width="small"),
+        "거래량": st.column_config.NumberColumn("거래량", width="small"),
+        "평가근거": st.column_config.TextColumn("평가근거", width="large"),
+    }
+
+
+def format_validation_view(frame: pd.DataFrame) -> pd.DataFrame:
+    view = frame.copy()
+    rename_map = {
+        "signal_date": "평가일",
+        "symbol": "종목코드",
+        "name": "종목명",
+        "knee_score": "매수점수",
+        "shoulder_score": "매도점수",
+        "ret_1d": "수익률(1일)",
+        "ret_3d": "수익률(3일)",
+        "ret_5d": "수익률(5일)",
+        "ret_10d": "수익률(10일)",
+        "knee_success": "매수 성공여부",
+        "shoulder_success": "매도 성공여부",
+    }
+    existing_map = {key: value for key, value in rename_map.items() if key in view.columns}
+    return view.rename(columns=existing_map)
+
+
 signals_df, signal_date = load_latest_signals(paths["signal_dir"])
 validation_df = load_validation_history(Path(paths["validation_file"]))
 
@@ -167,6 +199,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     height=CANDIDATE_TABLE_HEIGHT,
+    column_config=candidate_column_config(),
 )
 
 shoulder_header_col, shoulder_help_col = st.columns([20, 1])
@@ -179,6 +212,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     height=CANDIDATE_TABLE_HEIGHT,
+    column_config=candidate_column_config(),
 )
 
 st.subheader("종목 상세")
@@ -234,6 +268,6 @@ with validation_help_col:
     render_validation_help()
 if not validation_df.empty:
     symbol_validation = validation_df[validation_df["symbol"] == selected_symbol]
-    st.dataframe(symbol_validation, use_container_width=True, hide_index=True)
+    st.dataframe(format_validation_view(symbol_validation), use_container_width=True, hide_index=True)
 else:
     st.info("Validation data will appear after enough forward days have accumulated.")
