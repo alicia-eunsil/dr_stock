@@ -21,13 +21,24 @@ paths = config["paths"]
 def render_candidate_help(title: str, score_label: str, reasons_label: str) -> None:
     with st.popover("!"):
         st.markdown(f"**{title} 읽는 법**")
-        st.markdown("- `symbol` / `name`: 어떤 종목인지 확인하는 기본 정보입니다.")
-        st.markdown("- `close`: 분석 기준일 종가입니다. 현재 후보를 볼 때 기준 가격으로 생각하면 됩니다.")
-        st.markdown("- `pct_change`: 전일 대비 등락률입니다. 너무 급하게 오른 후보인지, 막 꺾인 후보인지 볼 때 같이 봅니다.")
-        st.markdown(f"- `{score_label}`: 반전 후보 강도입니다. 높을수록 여러 조건이 동시에 맞았다는 뜻입니다.")
-        st.markdown("- `grade`: `Strong`는 우선 확인할 강한 후보, `Watch`는 관찰할 후보, `Neutral`은 우선순위가 낮다는 뜻입니다.")
-        st.markdown("- `vol_ratio_20`: 거래량에 실제 힘이 붙었는지 보는 값입니다. 1보다 크면 평소보다 거래가 많이 붙은 날입니다.")
-        st.markdown(f"- `{reasons_label}`: 왜 이 종목이 후보로 잡혔는지 핵심 근거를 짧게 보여줍니다.")
+        if "Knee" in title:
+            st.markdown("- `symbol` > 종목코드")
+            st.markdown("- `name` > 종목명")
+            st.markdown("- `close` > 전일 종가")
+            st.markdown("- `pct_change` > 전일대비등락률")
+            st.markdown("- `knee_score` > 평가점수")
+            st.markdown("- `knee_grade` > 평가등급")
+            st.markdown("- `vol_ratio_20` > 거래량")
+            st.markdown("- `knee_reasons` > 평가근거")
+        else:
+            st.markdown("- `symbol` > 종목코드")
+            st.markdown("- `name` > 종목명")
+            st.markdown("- `close` > 전일 종가")
+            st.markdown("- `pct_change` > 전일대비등락률")
+            st.markdown("- `shoulder_score` > 평가점수")
+            st.markdown("- `shoulder_grade` > 평가등급")
+            st.markdown("- `vol_ratio_20` > 거래량")
+            st.markdown("- `shoulder_reasons` > 평가근거")
 
         if "Knee" in title:
             st.markdown("**해석 예시**")
