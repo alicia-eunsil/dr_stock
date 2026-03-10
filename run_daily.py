@@ -13,6 +13,7 @@ from src.knee_shoulder.master import build_stock_master_from_excel, load_stock_m
 from src.knee_shoulder.signals import SignalThresholds, score_symbol
 from src.knee_shoulder.storage import (
     ensure_directories,
+    get_latest_history_date,
     load_validation_history,
     merge_and_save_history,
     save_daily_patch,
@@ -39,6 +40,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--master-source", default=None, help="Source Excel file for stock master rebuild")
     parser.add_argument("--rebuild-master", action="store_true", help="Rebuild stock master CSV from the source Excel")
     return parser.parse_args()
+
+
+def resolve_fetch_start_date(raw_path: Path, runtime: dict, end_date_dt: datetime) -> str:
+    latest_stored = get_latest_history_date(raw_path)
+    if not latest_stored:
+        return (end_date_dt - timedelta(days=runtime["history_lookback_days"])).strftime("%Y%m%d")
+
+    latest_dt = datetime.strptime(latest_stored, "%Y%m%d")
+    recheck_days = runtime.get("incremental_recheck_days", 3)
+    start_dt = latest_dt - timedelta(days=recheck_days)
+    return start_dt.strftime("%Y%m%d")
 
 
 def main() -> None:
@@ -84,8 +96,8 @@ def main() -> None:
     )
     access_token = issue_access_token(auth)
 
-    end_date = datetime.now().strftime("%Y%m%d")
-    start_date = (datetime.now() - timedelta(days=runtime["history_lookback_days"])).strftime("%Y%m%d")
+    end_date_dt = datetime.now()
+    end_date = end_date_dt.strftime("%Y%m%d")
     thresholds = SignalThresholds(
         signal_threshold=runtime["signal_threshold"],
         strong_threshold=runtime["strong_threshold"],
@@ -96,7 +108,17 @@ def main() -> None:
     signal_rows = []
 
     for stock in master.itertuples(index=False):
-        logging.info("Fetching %s %s", stock.symbol, stock.name)
+        raw_path = Path(paths["raw_dir"]) / f"{stock.symbol}.csv"
+        start_date = resolve_fetch_start_date(raw_path, runtime, end_date_dt)
+        latest_stored = get_latest_history_date(raw_path)
+        logging.info(
+            "Fetching %s %s from %s to %s (latest stored: %s)",
+            stock.symbol,
+            stock.name,
+            start_date,
+            end_date,
+            latest_stored or "none",
+        )
         history = fetch_daily_history(auth, access_token, stock.symbol, start_date, end_date)
         throttle(runtime["request_sleep_sec"])
         if history.empty:
@@ -110,7 +132,6 @@ def main() -> None:
         latest_row["fetched_at"] = datetime.now().isoformat(timespec="seconds")
         patch_rows.append(latest_row)
 
-        raw_path = Path(paths["raw_dir"]) / f"{stock.symbol}.csv"
         merged = merge_and_save_history(raw_path, history.drop(columns=["symbol", "name"]))
         signal = score_symbol(merged, stock.symbol, stock.name, thresholds)
         if signal:

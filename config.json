@@ -13,6 +13,7 @@
   "runtime": {
     "market": "KR",
     "history_lookback_days": 180,
+    "incremental_recheck_days": 3,
     "min_rows_required": 60,
     "min_volume": 100000,
     "signal_threshold": 65,

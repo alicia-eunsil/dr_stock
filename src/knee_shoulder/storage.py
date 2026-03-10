@@ -16,6 +16,16 @@ def load_existing_history(path: Path) -> pd.DataFrame:
     return pd.read_csv(path, dtype={"date": str})
 
 
+def get_latest_history_date(path: Path) -> str | None:
+    history = load_existing_history(path)
+    if history.empty or "date" not in history.columns:
+        return None
+    dates = history["date"].dropna().astype(str)
+    if dates.empty:
+        return None
+    return dates.max()
+
+
 def merge_and_save_history(path: Path, incoming: pd.DataFrame) -> pd.DataFrame:
     current = load_existing_history(path)
     combined = pd.concat([current, incoming], ignore_index=True)
