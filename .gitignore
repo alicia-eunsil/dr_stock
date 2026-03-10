@@ -1,0 +1,13 @@
+__pycache__/
+.DS_Store
+.streamlit/
+.venv/
+venv/
+*.pyc
+logs/
+data/raw/
+data/patches/
+data/signals/
+data/validation/
+data/cache/
+secrets.json

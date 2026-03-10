@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+
+def ensure_directories(paths: list[str]) -> None:
+    for path in paths:
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def load_existing_history(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "turnover"])
+    return pd.read_csv(path, dtype={"date": str})
+
+
+def merge_and_save_history(path: Path, incoming: pd.DataFrame) -> pd.DataFrame:
+    current = load_existing_history(path)
+    combined = pd.concat([current, incoming], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_csv(path, index=False, encoding="utf-8-sig")
+    return combined
+
+
+def save_daily_patch(path: Path, frame: pd.DataFrame) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def save_daily_signals(path: Path, frame: pd.DataFrame) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.sort_values(["knee_score", "shoulder_score"], ascending=False).to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def load_validation_history(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path, dtype={"signal_date": str, "symbol": str})
+
+
+def save_validation_history(path: Path, frame: pd.DataFrame) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False, encoding="utf-8-sig")

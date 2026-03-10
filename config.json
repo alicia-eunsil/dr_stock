@@ -1,0 +1,28 @@
+{
+  "kis": {
+    "base_url": "https://openapi.koreainvestment.com:9443"
+  },
+  "paths": {
+    "stock_master": "data/master/stocks_kr.csv",
+    "raw_dir": "data/raw",
+    "patch_dir": "data/patches",
+    "signal_dir": "data/signals",
+    "validation_file": "data/validation/signal_validation.csv",
+    "log_dir": "logs"
+  },
+  "runtime": {
+    "market": "KR",
+    "history_lookback_days": 180,
+    "min_rows_required": 60,
+    "min_volume": 100000,
+    "signal_threshold": 65,
+    "strong_threshold": 80,
+    "request_sleep_sec": 0.12
+  },
+  "validation": {
+    "forward_days": [1, 3, 5, 10],
+    "knee_success_return_pct": 3.0,
+    "shoulder_success_return_pct": -3.0,
+    "evaluation_window_days": 5
+  }
+}
