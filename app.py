@@ -130,10 +130,12 @@ if signals_df.empty:
     st.stop()
 
 header_cols = st.columns(4)
-header_cols[0].metric("Signal Date", signal_date or "-")
+analysis_date = signal_date or "-"
+run_at = signals_df["run_at"].iloc[0] if "run_at" in signals_df.columns and not signals_df.empty else "-"
+header_cols[0].metric("Analysis Date", analysis_date)
 header_cols[1].metric("Knee Strong", int((signals_df["knee_grade"] == "Strong").sum()))
 header_cols[2].metric("Shoulder Strong", int((signals_df["shoulder_grade"] == "Strong").sum()))
-header_cols[3].metric("Symbols", len(signals_df))
+header_cols[3].metric("Run At", run_at)
 
 left, right = st.columns(2)
 

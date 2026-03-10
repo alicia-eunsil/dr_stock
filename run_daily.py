@@ -53,6 +53,13 @@ def resolve_fetch_start_date(raw_path: Path, runtime: dict, end_date_dt: datetim
     return start_dt.strftime("%Y%m%d")
 
 
+def resolve_analysis_date(now_dt: datetime) -> datetime:
+    analysis_dt = now_dt - timedelta(days=1)
+    while analysis_dt.weekday() >= 5:
+        analysis_dt -= timedelta(days=1)
+    return analysis_dt
+
+
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
@@ -96,13 +103,17 @@ def main() -> None:
     )
     access_token = issue_access_token(auth)
 
-    end_date_dt = datetime.now()
+    run_at_dt = datetime.now()
+    end_date_dt = resolve_analysis_date(run_at_dt)
     end_date = end_date_dt.strftime("%Y%m%d")
     thresholds = SignalThresholds(
         signal_threshold=runtime["signal_threshold"],
         strong_threshold=runtime["strong_threshold"],
         min_volume=runtime["min_volume"],
     )
+
+    logging.info("Run timestamp: %s", run_at_dt.isoformat(timespec="seconds"))
+    logging.info("Analysis date: %s", end_date)
 
     patch_rows = []
     signal_rows = []
@@ -124,12 +135,17 @@ def main() -> None:
         if history.empty:
             logging.warning("No history for %s", stock.symbol)
             continue
+        history = history[history["date"] <= end_date].copy()
+        if history.empty:
+            logging.warning("No completed history up to analysis date for %s", stock.symbol)
+            continue
 
         history["symbol"] = stock.symbol
         history["name"] = stock.name
 
         latest_row = history.iloc[[-1]].copy()
-        latest_row["fetched_at"] = datetime.now().isoformat(timespec="seconds")
+        latest_row["fetched_at"] = run_at_dt.isoformat(timespec="seconds")
+        latest_row["analysis_date"] = end_date
         patch_rows.append(latest_row)
 
         merged = merge_and_save_history(raw_path, history.drop(columns=["symbol", "name"]))
@@ -142,13 +158,15 @@ def main() -> None:
         return
 
     patch_df = pd.concat(patch_rows, ignore_index=True)
-    latest_date = str(patch_df["date"].iloc[0])
+    latest_date = end_date
     save_daily_patch(Path(paths["patch_dir"]) / f"{latest_date}_prices.csv", patch_df)
 
     signals_df = pd.DataFrame(signal_rows)
     if signals_df.empty:
         logging.warning("No signals calculated.")
         return
+    signals_df["analysis_date"] = end_date
+    signals_df["run_at"] = run_at_dt.isoformat(timespec="seconds")
     save_daily_signals(Path(paths["signal_dir"]) / f"{latest_date}_signals.csv", signals_df)
 
     new_validation = build_validation_rows(signals_df, paths["raw_dir"], validation_config["forward_days"])

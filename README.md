@@ -66,4 +66,5 @@ export KIS_BASE_URL='https://openapi.koreainvestment.com:9443'
 - 민감정보는 기본적으로 `KIS_APP_KEY`, `KIS_APP_SECRET`, `KIS_BASE_URL` 환경변수에서 읽습니다.
 - `secrets.json`은 로컬 fallback 용도이며 GitHub에 올리면 안 됩니다.
 - 첫 실행은 `history_lookback_days`만큼 넓게 적재하고, 이후 실행은 각 종목의 최신 저장일 기준 `incremental_recheck_days`만큼만 재조회합니다.
+- 기본 분석 기준일은 항상 "어제 마지막 확정 거래일"입니다. 장중 실행해도 오늘 미완성 봉은 저장/신호 계산에서 제외합니다.
 - 첫 버전은 가격/거래량 기반 신호에 집중했고, 투자자별 매매량 API는 2차 확장용으로 남겨두었습니다.
