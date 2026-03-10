@@ -80,6 +80,39 @@ def prepare_history_for_chart(history: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
+def render_candidate_radio_grid(title: str, options: list[str], key_prefix: str) -> str | None:
+    st.markdown(f"**{title}**")
+    if not options:
+        st.caption("후보 없음")
+        return None
+
+    limited = options[:10]
+    left_chunk = limited[:5]
+    right_chunk = limited[5:10]
+    left_col, right_col = st.columns(2)
+
+    with left_col:
+        left_selected = st.radio(
+            f"{title} 좌측",
+            options=["선택 안함"] + left_chunk,
+            key=f"{key_prefix}_left",
+            label_visibility="collapsed",
+        )
+    with right_col:
+        right_selected = st.radio(
+            f"{title} 우측",
+            options=["선택 안함"] + right_chunk if right_chunk else ["선택 안함"],
+            key=f"{key_prefix}_right",
+            label_visibility="collapsed",
+        )
+
+    if left_selected != "선택 안함":
+        return left_selected
+    if right_selected != "선택 안함":
+        return right_selected
+    return limited[0]
+
+
 def format_candidate_view(frame: pd.DataFrame, score_column: str, reasons_column: str) -> pd.DataFrame:
     view = frame[
         ["symbol", "name", "close", "pct_change", score_column, f"{score_column.split('_')[0]}_grade", "vol_ratio_20", reasons_column]
@@ -146,22 +179,14 @@ shoulder_options = (shoulder_view["symbol"] + " | " + shoulder_view["name"]).tol
 
 selector_col1, selector_col2 = st.columns(2)
 with selector_col1:
-    knee_selected = st.radio(
-        "Knee Candidate",
-        options=knee_options if knee_options else ["후보 없음"],
-        key="knee_candidate_radio",
-    )
+    knee_selected = render_candidate_radio_grid("Knee Candidate", knee_options, "knee_candidate_radio")
 with selector_col2:
-    shoulder_selected = st.radio(
-        "Shoulder Candidate",
-        options=shoulder_options if shoulder_options else ["후보 없음"],
-        key="shoulder_candidate_radio",
-    )
+    shoulder_selected = render_candidate_radio_grid("Shoulder Candidate", shoulder_options, "shoulder_candidate_radio")
 
 selected_option = None
-if knee_selected != "후보 없음":
+if knee_selected:
     selected_option = knee_selected
-elif shoulder_selected != "후보 없음":
+elif shoulder_selected:
     selected_option = shoulder_selected
 else:
     st.info("현재 상세 보기로 선택할 후보 종목이 없습니다.")
@@ -174,25 +199,9 @@ history = load_existing_history(Path(paths["raw_dir"]) / f"{selected_symbol}.csv
 if not history.empty:
     history = prepare_history_for_chart(history)
     figure = go.Figure()
-    figure.add_trace(
-        go.Scatter(
-            x=history["date"],
-            y=history["close"],
-            mode="markers",
-            name="Close",
-            marker=dict(size=7),
-        )
-    )
+    figure.add_trace(go.Scatter(x=history["date"], y=history["close"], mode="lines", name="Close"))
     if "ma_20" in history.columns:
-        figure.add_trace(
-            go.Scatter(
-                x=history["date"],
-                y=history["ma_20"],
-                mode="markers",
-                name="MA20",
-                marker=dict(size=5),
-            )
-        )
+        figure.add_trace(go.Scatter(x=history["date"], y=history["ma_20"], mode="lines", name="MA20"))
     figure.update_layout(
         height=420,
         margin=dict(l=20, r=20, t=20, b=20),
