@@ -3,7 +3,7 @@ name: Daily Knee Shoulder Batch
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 7 * * 1-5"
+    - cron: "30 8 * * 1-5"
 
 permissions:
   contents: write
