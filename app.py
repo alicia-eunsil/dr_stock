@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +12,31 @@ from src.knee_shoulder.storage import load_existing_history, load_validation_his
 
 
 st.set_page_config(page_title="Knee Shoulder Monitor", page_icon="🌻", layout="wide")
+
+
+def require_access_code() -> None:
+    expected_code = os.getenv("ACCESS_CODE") or st.secrets.get("ACCESS_CODE")
+    if not expected_code:
+        st.error("ACCESS_CODE 환경변수가 설정되지 않았습니다.")
+        st.stop()
+
+    if st.session_state.get("access_granted"):
+        return
+
+    st.title("Knee/Shoulder Stock Monitor")
+    st.caption("접속코드를 입력해야 대시보드를 볼 수 있습니다.")
+    entered_code = st.text_input("접속코드", type="password")
+    if st.button("확인", type="primary"):
+        if entered_code == expected_code:
+            st.session_state["access_granted"] = True
+            st.rerun()
+        else:
+            st.error("접속코드가 올바르지 않습니다.")
+    st.stop()
+
+
+require_access_code()
+
 st.title("Knee/Shoulder Stock Monitor")
 st.caption("Daily close-based reversal monitoring dashboard for Korean stocks.")
 
@@ -60,10 +86,12 @@ def render_validation_help() -> None:
     with st.popover("!"):
         st.markdown("**예측평가 읽는 법**")
         st.markdown("- 이 표는 오늘 후보가 아니라, **직전 거래일에 포착된 후보가 오늘 기준으로 어떻게 됐는지** 보는 영역입니다.")
-        st.markdown("- `평가일` > 해당 신호를 평가한 기준 날짜입니다.")
+        st.markdown("- `결정일` > 해당 종목이 매수/매도 후보로 결정된 날짜입니다.")
         st.markdown("- `매수점수` > 무릎 후보 점수입니다. 높을수록 매수 후보 근거가 많이 겹친 상태입니다.")
         st.markdown("- `매도점수` > 어깨 후보 점수입니다. 높을수록 매도 후보 근거가 많이 겹친 상태입니다.")
-        st.markdown("- `수익률(1일)`, `수익률(3일)`, `수익률(5일)`, `수익률(10일)` > 평가일 이후 각각 1일, 3일, 5일, 10일 뒤 수익률입니다.")
+        st.markdown("- `수익률(1일)`, `수익률(3일)`, `수익률(5일)`, `수익률(10일)` > 결정일 이후 각각 1일, 3일, 5일, 10일 뒤 수익률입니다.")
+        st.markdown("- 예를 들어 3월 9일에 결정된 종목이면, `수익률(1일)`은 3월 10일 데이터가 쌓일 때 채워집니다.")
+        st.markdown("- `수익률(3일)`, `수익률(5일)`, `수익률(10일)`도 각각 해당 일수가 지난 뒤 배치가 다시 돌면 채워집니다.")
         st.markdown("- `매수 성공여부` > 5일 안에 `+3%` 이상 상승했는지 뜻합니다.")
         st.markdown("- `매도 성공여부` > 5일 안에 `-3%` 이하 하락했는지 뜻합니다.")
         st.markdown("- 해석할 때는 매수 후보는 수익률이 플러스인지, 매도 후보는 수익률이 마이너스인지 먼저 보면 됩니다.")
@@ -156,7 +184,7 @@ def candidate_column_config() -> dict:
 def format_validation_view(frame: pd.DataFrame) -> pd.DataFrame:
     view = frame.copy()
     rename_map = {
-        "signal_date": "평가일",
+        "signal_date": "결정일",
         "symbol": "종목코드",
         "name": "종목명",
         "knee_score": "매수점수",
