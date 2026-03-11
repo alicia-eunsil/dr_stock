@@ -48,16 +48,10 @@ def resolve_fetch_start_date(raw_path: Path, runtime: dict, end_date_dt: datetim
         return (end_date_dt - timedelta(days=runtime["history_lookback_days"])).strftime("%Y%m%d")
 
     latest_dt = datetime.strptime(latest_stored, "%Y%m%d")
-    recheck_days = runtime.get("incremental_recheck_days", 3)
-    start_dt = latest_dt - timedelta(days=recheck_days)
+    start_dt = latest_dt + timedelta(days=1)
+    if start_dt > end_date_dt:
+        start_dt = end_date_dt
     return start_dt.strftime("%Y%m%d")
-
-
-def resolve_analysis_date(now_dt: datetime) -> datetime:
-    analysis_dt = now_dt - timedelta(days=1)
-    while analysis_dt.weekday() >= 5:
-        analysis_dt -= timedelta(days=1)
-    return analysis_dt
 
 
 def main() -> None:
@@ -104,7 +98,7 @@ def main() -> None:
     access_token = issue_access_token(auth)
 
     run_at_dt = datetime.now()
-    end_date_dt = resolve_analysis_date(run_at_dt)
+    end_date_dt = run_at_dt
     end_date = end_date_dt.strftime("%Y%m%d")
     thresholds = SignalThresholds(
         signal_threshold=runtime["signal_threshold"],
@@ -113,7 +107,7 @@ def main() -> None:
     )
 
     logging.info("Run timestamp: %s", run_at_dt.isoformat(timespec="seconds"))
-    logging.info("Analysis date: %s", end_date)
+    logging.info("Target date: %s", end_date)
 
     patch_rows = []
     signal_rows = []
@@ -134,10 +128,6 @@ def main() -> None:
         throttle(runtime["request_sleep_sec"])
         if history.empty:
             logging.warning("No history for %s", stock.symbol)
-            continue
-        history = history[history["date"] <= end_date].copy()
-        if history.empty:
-            logging.warning("No completed history up to analysis date for %s", stock.symbol)
             continue
 
         history["symbol"] = stock.symbol
