@@ -54,3 +54,12 @@ def load_validation_history(path: Path) -> pd.DataFrame:
 def save_validation_history(path: Path, frame: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def load_all_signal_files(signal_dir: str) -> pd.DataFrame:
+    files = sorted(Path(signal_dir).glob("*_signals.csv"))
+    if not files:
+        return pd.DataFrame()
+    frames = [pd.read_csv(file, dtype={"symbol": str, "date": str}) for file in files]
+    combined = pd.concat(frames, ignore_index=True)
+    return combined.drop_duplicates(subset=["date", "symbol"]).sort_values(["date", "symbol"]).reset_index(drop=True)

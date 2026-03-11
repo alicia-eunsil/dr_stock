@@ -14,7 +14,7 @@ from src.knee_shoulder.signals import SignalThresholds, score_symbol
 from src.knee_shoulder.storage import (
     ensure_directories,
     get_latest_history_date,
-    load_validation_history,
+    load_all_signal_files,
     merge_and_save_history,
     save_daily_patch,
     save_daily_signals,
@@ -159,16 +159,15 @@ def main() -> None:
     signals_df["run_at"] = run_at_dt.isoformat(timespec="seconds")
     save_daily_signals(Path(paths["signal_dir"]) / f"{latest_date}_signals.csv", signals_df)
 
-    new_validation = build_validation_rows(signals_df, paths["raw_dir"], validation_config["forward_days"])
+    all_signals_df = load_all_signal_files(paths["signal_dir"])
+    new_validation = build_validation_rows(all_signals_df, paths["raw_dir"], validation_config["forward_days"])
     validation_path = Path(paths["validation_file"])
-    validation_history = load_validation_history(validation_path)
-    validation_all = pd.concat([validation_history, new_validation], ignore_index=True)
-    validation_all = validation_all.drop_duplicates(subset=["signal_date", "symbol"]).sort_values(["signal_date", "symbol"])
+    validation_all = new_validation.drop_duplicates(subset=["signal_date", "symbol"]).sort_values(["signal_date", "symbol"])
     save_validation_history(validation_path, validation_all)
 
     logging.info("Saved patch rows: %s", len(patch_df))
     logging.info("Saved signals: %s", len(signals_df))
-    logging.info("Validation rows: %s", len(new_validation))
+    logging.info("Validation rows rebuilt: %s", len(new_validation))
 
 
 if __name__ == "__main__":

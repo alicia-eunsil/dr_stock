@@ -84,16 +84,6 @@ def prepare_history_for_chart(history: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
-def previous_business_date(date_str: str) -> str | None:
-    dt = pd.to_datetime(date_str, format="%Y%m%d", errors="coerce")
-    if pd.isna(dt):
-        return None
-    dt = dt - pd.Timedelta(days=1)
-    while dt.weekday() >= 5:
-        dt = dt - pd.Timedelta(days=1)
-    return dt.strftime("%Y%m%d")
-
-
 def render_candidate_radio_grid(title: str, options: list[str], key_prefix: str) -> str | None:
     st.markdown(f"**{title}**")
     if not options:
@@ -280,23 +270,22 @@ with validation_header_col:
 with validation_help_col:
     render_validation_help()
 if not validation_df.empty:
-    previous_eval_date = previous_business_date(analysis_date)
-    if previous_eval_date:
-        daily_validation = validation_df[validation_df["signal_date"].astype(str) == previous_eval_date].copy()
-    else:
-        daily_validation = pd.DataFrame()
-
-    if not daily_validation.empty:
-        daily_validation = daily_validation[
-            (pd.to_numeric(daily_validation["knee_score"], errors="coerce") >= CANDIDATE_DISPLAY_MIN_SCORE)
-            | (pd.to_numeric(daily_validation["shoulder_score"], errors="coerce") >= CANDIDATE_DISPLAY_MIN_SCORE)
+    eval_view = validation_df[validation_df["signal_date"].astype(str) < analysis_date].copy()
+    if not eval_view.empty:
+        eval_view = eval_view[
+            (pd.to_numeric(eval_view["knee_score"], errors="coerce") >= CANDIDATE_DISPLAY_MIN_SCORE)
+            | (pd.to_numeric(eval_view["shoulder_score"], errors="coerce") >= CANDIDATE_DISPLAY_MIN_SCORE)
         ].copy()
+        recent_dates = sorted(eval_view["signal_date"].astype(str).unique())[-5:]
+        eval_view = eval_view[eval_view["signal_date"].astype(str).isin(recent_dates)].copy()
+        eval_view = eval_view.sort_values(["signal_date", "knee_score", "shoulder_score"], ascending=[False, False, False])
 
-    if daily_validation.empty:
-        st.info("직전 거래일 기준으로 아직 표시할 예측평가 데이터가 없습니다.")
+    if eval_view.empty:
+        st.info("아직 표시할 예측평가 데이터가 없습니다.")
     else:
-        st.caption(f"직전 거래일 기준 예측평가: {previous_eval_date}")
-        st.dataframe(format_validation_view(daily_validation), use_container_width=True, hide_index=True)
+        date_text = ", ".join(sorted(eval_view["signal_date"].astype(str).unique(), reverse=True))
+        st.caption(f"최근 평가일 기준 예측평가: {date_text}")
+        st.dataframe(format_validation_view(eval_view), use_container_width=True, hide_index=True)
 else:
     st.info("예측평가 데이터가 아직 없습니다.")
 
